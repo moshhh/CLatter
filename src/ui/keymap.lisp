@@ -3,6 +3,10 @@
 (defun %set-current-buffer (app id)
   (setf (app-current-buffer-id app)
         (mod id (length (app-buffers app))))
+  ;; Clear unread/highlight counts when viewing buffer
+  (let ((buf (current-buffer app)))
+    (setf (clatter.core.model:buffer-unread-count buf) 0)
+    (setf (clatter.core.model:buffer-highlight-count buf) 0))
   (mark-dirty app :chat :buflist :status :input))
 
 (defun %buf-next (app)
