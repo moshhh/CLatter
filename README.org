@@ -1,0 +1,107 @@
+#+TITLE: CLatter - A Common Lisp IRC Client
+#+AUTHOR: Glenn Thompson
+#+OPTIONS: toc:2
+
+* CLatter
+
+A terminal-based IRC client written in Common Lisp using the [[https://codeberg.org/McParen/croatoan][croatoan]] ncurses library.
+
+** Features
+
+- *TLS Support* - Secure connections to IRC servers
+- *Nick Colorization* - Each nick gets a consistent color based on hash
+- *Nick Highlighting* - Messages mentioning your nick are highlighted
+- *Tab Completion* - Press Tab to complete nicks in the current channel
+- *Autojoin Management* - Channels are auto-added to autojoin on ~/join~
+- *Multi-buffer Interface* - Server, channel, and query buffers
+- *Command History* - Up/Down arrows to navigate input history
+- *Scrollback* - Page Up/Down to scroll through message history
+
+** Requirements
+
+- SBCL (Steel Bank Common Lisp)
+- Quicklisp
+- ncurses development libraries
+
+** Installation
+
+#+begin_src bash
+# Clone the repository
+git clone https://github.com/yourusername/CLatter.git
+cd CLatter
+
+# Build
+make clean && make
+#+end_src
+
+** Usage
+
+#+begin_src bash
+./clatter
+#+end_src
+
+On first run, you'll be prompted for a nickname and connected to Libera.Chat.
+
+** Configuration
+
+Configuration is stored in =~/.config/clatter/config.lisp=
+
+Example:
+#+begin_src lisp
+(:clatter-config
+ :version 1
+ :default-network nil
+ :networks
+ ((:name "libera"
+   :server "irc.libera.chat"
+   :port 6697
+   :tls t
+   :nick "yournick"
+   :username nil
+   :realname "Your Name"
+   :password nil
+   :nickserv-pw nil
+   :autojoin ("#lisp" "#emacs")
+   :autoconnect t)))
+#+end_src
+
+** Commands
+
+| Command                      | Description                              |
+|------------------------------+------------------------------------------|
+| ~/join #channel [key]~       | Join a channel (auto-adds to autojoin)  |
+| ~/part [#channel] [msg]~     | Leave a channel                          |
+| ~/autojoin~                  | List autojoin channels                   |
+| ~/autojoin add #channel~     | Add channel to autojoin                  |
+| ~/autojoin remove #channel~  | Remove channel from autojoin             |
+| ~/msg target text~           | Send private message                     |
+| ~/me action~                 | Send action to current channel           |
+| ~/nick newnick~              | Change nickname                          |
+| ~/quit~ or ~/q [message]~    | Disconnect and exit                      |
+| ~/ns command~                | Send to NickServ                         |
+| ~/cs command~                | Send to ChanServ                         |
+| ~/query nick~                | Open query with user                     |
+| ~/raw line~                  | Send raw IRC command                     |
+| ~/help~                      | Show help                                |
+
+** Keybindings
+
+| Key         | Action                    |
+|-------------+---------------------------|
+| Tab         | Nick completion           |
+| Up/Down     | Input history             |
+| Page Up/Down| Scroll chat               |
+| Ctrl-P/N    | Previous/Next buffer      |
+| Ctrl-A      | Move to start of line     |
+| Ctrl-E      | Move to end of line       |
+| Backspace   | Delete character          |
+| Enter       | Send message/command      |
+
+** License
+
+MIT
+
+** Acknowledgments
+
+- [[https://codeberg.org/McParen/croatoan][croatoan]] - ncurses bindings for Common Lisp
+- Libera.Chat IRC network

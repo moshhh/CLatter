@@ -1,0 +1,77 @@
+#+TITLE: CLatter Roadmap
+#+AUTHOR: Glenn Thompson
+#+OPTIONS: toc:2
+
+* CLatter Development Roadmap
+
+** Completed Features
+
+*** v0.1 - Initial Release
+- [X] Basic IRC protocol implementation (RFC 1459/2812)
+- [X] TLS/SSL support
+- [X] Multi-buffer interface (server, channels, queries)
+- [X] NickServ auto-identify
+- [X] Channel autojoin
+- [X] Input history (Up/Down arrows)
+- [X] Scrollback with Page Up/Down
+- [X] Basic commands: /join, /part, /msg, /me, /nick, /quit, /query, /raw
+- [X] Service shortcuts: /ns, /cs
+- [X] Nick colorization (hash-based consistent colors)
+- [X] Nick highlighting (visual indicator when mentioned)
+- [X] Tab completion for nicks
+- [X] Autojoin management (/autojoin add/remove)
+- [X] /q shortcut for /quit
+
+** Planned Features
+
+*** v0.2 - Polish & Usability
+- [ ] CTCP support (VERSION, TIME, PING)
+- [ ] /whois command
+- [ ] /topic command
+- [ ] /kick and /ban commands
+- [ ] Channel modes display
+- [ ] User list panel (toggleable)
+- [ ] Timestamps on messages
+- [ ] URL detection and highlighting
+- [ ] Desktop notifications (libnotify)
+
+*** v0.3 - Multi-Network
+- [ ] Multiple simultaneous network connections
+- [ ] Network switching commands
+- [ ] Per-network buffer organization
+- [ ] /server command to add/connect networks
+
+*** v0.4 - Logging & Search
+- [ ] Message logging to disk
+- [ ] Log search functionality
+- [ ] Log viewer/browser
+- [ ] Export logs to various formats
+
+*** v1.0 - Daemon Mode (Major)
+- [ ] Separate IRC backend daemon process
+- [ ] Systemd service integration
+- [ ] Persistent connections (survive TUI restarts)
+- [ ] Message buffering while TUI disconnected
+- [ ] Unix socket IPC between daemon and TUI
+- [ ] Attach/detach model (like tmux/screen)
+- [ ] SQLite message storage
+- [ ] Web interface option (stretch goal)
+
+** Ideas / Wishlist
+
+- [ ] Plugin/scripting system (maybe via Lisp eval)
+- [ ] Theming support (color schemes)
+- [ ] Mouse support for buffer switching
+- [ ] Split-pane view for multiple channels
+- [ ] DCC file transfer support
+- [ ] IRCv3 capabilities (SASL, message-tags, etc.)
+- [ ] Matrix bridge support
+- [ ] Spell checking integration
+
+** Contributing
+
+Contributions welcome! Please open issues or pull requests on GitHub.
+
+** Notes
+
+This roadmap is subject to change based on user feedback and priorities.
