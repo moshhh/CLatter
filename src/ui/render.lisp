@@ -227,7 +227,7 @@ Messages are displayed newest-first (ascending from top)."
                         (aref (app-buffers app) (ui-split-buffer-id ui))))
            (line (if split-p
                      (format nil " Ctrl+] pane | Ctrl-W unsplit | Ctrl-P/N left buf | Ctrl-R right buf | Ctrl-X swap")
-                     (format nil " [~a]~@[  unread:~d~]~@[  mentions:~d~]  | /q quit | Ctrl-W split | Ctrl-P/N buffers"
+                     (format nil " [~a]~@[  unread:~d~]~@[  mentions:~d~]  | /q quit | Ctrl-W split | Ctrl-P/N buf | Ctrl-U/D scroll"
                              (buffer-title buf)
                              (and (> unread 0) unread)
                              (and (> highlights 0) highlights)))))
