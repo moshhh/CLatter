@@ -10,15 +10,19 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 
 - *TLS Support* - Secure connections to IRC servers
 - *SASL Authentication* - Authenticate before connection completes (hides IP)
+- *Auto-Reconnect* - Automatic reconnection with exponential backoff
+- *Connection Health Monitoring* - Detects stale connections and reconnects
 - *Nick Colorization* - Each nick gets a consistent color based on hash
-- *Nick Highlighting* - Messages mentioning your nick are highlighted (bold magenta)
+- *Nick Highlighting* - Messages mentioning your nick are highlighted
 - *Tab Completion* - Press Tab to complete nicks in the current channel
 - *Autojoin Management* - Channels are auto-added to autojoin on ~/join~
 - *Multi-buffer Interface* - Server, channel, and query buffers
 - *Command History* - Up/Down arrows to navigate input history
 - *Scrollback* - Page Up/Down to scroll through message history
-- *Split-Pane View* - View two channels side-by-side (Ctrl-W to toggle)
-- *Timestamps* - Configurable time format on messages
+- *Split-Pane View* - View two channels side-by-side
+- *CTCP Support* - Responds to VERSION, PING, TIME requests
+- *Message Logging* - Automatic logging to =~/.local/share/clatter/logs/=
+- *Log Search* - Search through message history with ~/log search~
 
 ** Requirements
 
@@ -29,25 +33,11 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 ** Installation
 
 #+begin_src bash
-# 1. Install system dependencies
-# Debian/Ubuntu:
-sudo apt install sbcl libncurses-dev
-# Fedora/RHEL:
-# sudo dnf install sbcl ncurses-devel
-# Arch:
-# sudo pacman -S sbcl ncurses
-
-# 2. Install Quicklisp (if not already installed)
-curl -O https://beta.quicklisp.org/quicklisp.lisp
-sbcl --load quicklisp.lisp \
-     --eval '(quicklisp-quickstart:install)' \
-     --eval '(ql:add-to-init-file)' \
-     --quit
-rm quicklisp.lisp
-
-# 3. Clone and build
-git clone https://github.com/glenneth1/CLatter.git
+# Clone the repository
+git clone https://github.com/yourusername/CLatter.git
 cd CLatter
+
+# Build
 make clean && make
 #+end_src
 
@@ -68,7 +58,6 @@ Example:
 (:clatter-config
  :version 1
  :default-network nil
- :time-format "%H:%M"
  :networks
  ((:name "libera"
    :server "irc.libera.chat"
@@ -78,27 +67,11 @@ Example:
    :username nil
    :realname "Your Name"
    :password nil
-   :nickserv-pw nil
+   :nickserv-pw "your-password"
+   :sasl :plain
    :autojoin ("#lisp" "#emacs")
    :autoconnect t)))
 #+end_src
-
-*** Time Format Options
-
-The =:time-format= setting controls how timestamps are displayed on messages.
-
-| Token | Description          | Example |
-|-------+----------------------+---------|
-| =%H=  | 24-hour hour (00-23) | 14      |
-| =%I=  | 12-hour hour (01-12) | 02      |
-| =%M=  | Minute (00-59)       | 30      |
-| =%S=  | Second (00-59)       | 45      |
-| =%p=  | AM/PM indicator      | PM      |
-
-Example formats:
-- ="%H:%M"= → =14:30= (default)
-- ="%H:%M:%S"= → =14:30:45=
-- ="%I:%M %p"= → =02:30 PM=
 
 *** SASL Authentication
 
@@ -107,19 +80,6 @@ SASL authenticates you *before* your connection is visible, so your IP/hostname 
 1. You must have a registered nick with NickServ
 2. Add =:sasl :plain= to your network config
 3. Ensure =:nickserv-pw= contains your NickServ password (or use =:authinfo=)
-
-Example network config with SASL:
-#+begin_src lisp
-(:name "libera"
- :server "irc.libera.chat"
- :port 6697
- :tls t
- :nick "yournick"
- :nickserv-pw "your-nickserv-password"
- :sasl :plain
- :autojoin ("#channel1" "#channel2")
- :autoconnect t)
-#+end_src
 
 *** Authinfo Password Storage
 
@@ -157,25 +117,35 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | ~/ns command~                | Send to NickServ                         |
 | ~/cs command~                | Send to ChanServ                         |
 | ~/query nick~                | Open query with user                     |
+| ~/whois nick~                | Query user information                   |
+| ~/topic [text]~              | View or set channel topic                |
+| ~/kick nick [reason]~        | Kick user from channel (requires op)     |
+| ~/ban mask~                  | Ban a hostmask from channel (requires op)|
+| ~/mode [+/-modes] [args]~    | Set channel or user modes                |
+| ~/ctcp nick command~         | Send CTCP request (VERSION, PING, TIME)  |
+| ~/log~                       | View recent logs for current buffer      |
+| ~/log search pattern~        | Search logs for pattern                  |
+| ~/log list~                  | List all logged targets                  |
+| ~/log export [text/json/html]~ | Export logs to file                    |
 | ~/raw line~                  | Send raw IRC command                     |
 | ~/help~                      | Show help                                |
 
 ** Keybindings
 
-| Key          | Action                              |
-|--------------+-------------------------------------|
-| Tab          | Nick completion                     |
-| Up/Down      | Input history                       |
-| Page Up/Down | Scroll chat                         |
-| Ctrl-P/N     | Previous/Next buffer (left pane)    |
-| Ctrl-A       | Move to start of line               |
-| Ctrl-E       | Move to end of line                 |
-| Backspace    | Delete character                    |
-| Enter        | Send message/command                |
-| Ctrl-W       | Toggle split-pane view              |
-| Ctrl-R       | Set current buffer as right pane    |
-| Ctrl-X       | Swap left and right pane buffers    |
-| Ctrl-]       | Toggle active pane (for input)      |
+| Key         | Action                    |
+|-------------+---------------------------|
+| Tab         | Nick completion           |
+| Up/Down     | Input history             |
+| Page Up/Down| Scroll chat               |
+| Ctrl-P/N    | Previous/Next buffer      |
+| Ctrl-A      | Move to start of line     |
+| Ctrl-E      | Move to end of line       |
+| Backspace   | Delete character          |
+| Enter       | Send message/command      |
+| Ctrl-W      | Toggle split-pane view    |
+| Ctrl-]      | Switch active pane        |
+| Ctrl-R      | Set right pane buffer     |
+| Ctrl-X      | Swap panes                |
 
 ** License
 

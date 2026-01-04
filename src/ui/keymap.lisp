@@ -132,13 +132,18 @@
   ;; Ctrl+] to toggle active pane (where input goes)
   (de.anvi.croatoan:bind screen (code-char 29) (lambda (o e) (declare (ignore o e)) (%toggle-active-pane app)))  ;; Ctrl+] toggle active pane
 
-  ;; raw escape sequence binds (Ghostty/xterm)
+  ;; raw escape sequence binds (Ghostty/xterm/various terminals)
   (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\A) 'string) (lambda (o e) (declare (ignore o e)) (input-history-prev app)))
   (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\B) 'string) (lambda (o e) (declare (ignore o e)) (input-history-next app)))
   (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\D) 'string) (lambda (o e) (declare (ignore o e)) (input-move-left app)))
   (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\C) 'string) (lambda (o e) (declare (ignore o e)) (input-move-right app)))
-  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\5 #\~) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-up app 10)))
-  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\6 #\~) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-down app 10)))
+  ;; Page Up/Down escape sequences - multiple variants for different terminals
+  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\5 #\~) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-up app 10)))   ;; xterm
+  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\6 #\~) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-down app 10))) ;; xterm
+  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\5 #\;) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-up app 10)))   ;; variant
+  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\[ #\6 #\;) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-down app 10))) ;; variant
+  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\O #\5 #\~) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-up app 10)))   ;; application mode
+  (de.anvi.croatoan:bind screen (coerce '(#\Esc #\O #\6 #\~) 'string) (lambda (o e) (declare (ignore o e)) (%scroll-down app 10))) ;; application mode
 
   ;; Default handler for all other events - handles printable characters
   ;; This catches any character the terminal sends, including Shift+letter -> uppercase

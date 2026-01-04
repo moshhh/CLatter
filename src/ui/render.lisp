@@ -1,5 +1,9 @@
 (in-package #:clatter.ui.render)
 
+;; Health check timing
+(defvar *last-health-check* 0 "Universal time of last connection health check")
+(defparameter *health-check-interval* 30 "Seconds between health checks")
+
 ;; Nick color palette - bright colors that work on dark backgrounds
 (defparameter *nick-colors*
   '(:red :green :yellow :blue :magenta :cyan
@@ -9,6 +13,20 @@
   "Hash a nick to a consistent color from the palette."
   (let ((hash (reduce #'+ (map 'list #'char-code nick))))
     (nth (mod hash (length *nick-colors*)) *nick-colors*)))
+
+(defun format-time (universal-time fmt)
+  "Format universal time using format string.
+Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM/PM)."
+  (multiple-value-bind (sec min hour) (decode-universal-time universal-time)
+    (let* ((hour12 (let ((h (mod hour 12))) (if (zerop h) 12 h)))
+           (ampm (if (< hour 12) "AM" "PM"))
+           (result fmt))
+      (setf result (cl-ppcre:regex-replace-all "%H" result (format nil "~2,'0d" hour)))
+      (setf result (cl-ppcre:regex-replace-all "%I" result (format nil "~2,'0d" hour12)))
+      (setf result (cl-ppcre:regex-replace-all "%M" result (format nil "~2,'0d" min)))
+      (setf result (cl-ppcre:regex-replace-all "%S" result (format nil "~2,'0d" sec)))
+      (setf result (cl-ppcre:regex-replace-all "%p" result ampm))
+      result)))
 
 (defun wrap-text (text width)
   "Wrap text to fit within width, returning list of lines."
@@ -83,23 +101,8 @@
         (setf (de.anvi.croatoan:cursor-position-x win) 2)
         (format win "~a" title)))))
 
-(defun format-time (universal-time fmt)
-  "Format universal time using format string.
-Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM/PM)."
-  (multiple-value-bind (sec min hour) (decode-universal-time universal-time)
-    (let* ((hour12 (let ((h (mod hour 12))) (if (zerop h) 12 h)))
-           (ampm (if (< hour 12) "AM" "PM"))
-           (result fmt))
-      (setf result (cl-ppcre:regex-replace-all "%H" result (format nil "~2,'0d" hour)))
-      (setf result (cl-ppcre:regex-replace-all "%I" result (format nil "~2,'0d" hour12)))
-      (setf result (cl-ppcre:regex-replace-all "%M" result (format nil "~2,'0d" min)))
-      (setf result (cl-ppcre:regex-replace-all "%S" result (format nil "~2,'0d" sec)))
-      (setf result (cl-ppcre:regex-replace-all "%p" result ampm))
-      result)))
-
 (defun render-chat-pane (win buf)
-  "Render a buffer's messages into a chat window pane.
-Messages are displayed newest-first (ascending from top)."
+  "Render a buffer's messages into a chat window pane."
   (let* ((msgs (ring->list (buffer-scrollback buf)))
          (h (de.anvi.croatoan:height win))
          (w (de.anvi.croatoan:width win))
@@ -108,9 +111,9 @@ Messages are displayed newest-first (ascending from top)."
          (offset (buffer-scroll-offset buf))
          (time-fmt (let ((cfg clatter.core.commands:*current-config*))
                      (if cfg (clatter.core.config:config-time-format cfg) "%H:%M"))))
-    ;; Build display lines from messages, newest first
+    ;; Build display lines from messages
     (let ((display-lines nil))
-      (loop for m in (reverse msgs)  ;; newest messages first
+      (loop for m in msgs
             for ts = (clatter.core.model:message-ts m)
             for time-str = (format-time ts time-fmt)
             for nick = (or (clatter.core.model:message-nick m) "*")
@@ -122,19 +125,18 @@ Messages are displayed newest-first (ascending from top)."
             for wrapped = (wrap-text text text-width)
             do (let ((first-line t))
                  (dolist (line wrapped)
-                   (setf display-lines 
-                         (nconc display-lines 
-                                (list (list :nick (if first-line nick-display
-                                                      (make-string nick-len :initial-element #\Space))
-                                            :text line
-                                            :highlight highlightp
-                                            :nick-raw nick
-                                            :first first-line))))
+                   (push (list :nick (if first-line nick-display
+                                         (make-string nick-len :initial-element #\Space))
+                               :text line
+                               :highlight highlightp
+                               :nick-raw nick
+                               :first first-line)
+                         display-lines)
                    (setf first-line nil))))
-      ;; Scroll: offset 0 = show from top (newest), offset N = skip N lines to see older
+      (setf display-lines (nreverse display-lines))
       (let* ((total (length display-lines))
-             (start (min offset total))
-             (end (min (+ start content-h) total))
+             (end (max 0 (- total offset)))
+             (start (max 0 (- end content-h)))
              (visible (subseq display-lines start end))
              (y 1))
         (dolist (dl visible)
@@ -161,7 +163,19 @@ Messages are displayed newest-first (ascending from top)."
                   (de.anvi.croatoan:add-string win text-display)))
             (incf y)))))))
 
+(defun maybe-check-connection-health ()
+  "Periodically check connection health (called from render loop)."
+  (let ((now (get-universal-time)))
+    (when (> (- now *last-health-check*) *health-check-interval*)
+      (setf *last-health-check* now)
+      (let ((conn clatter.core.commands:*current-connection*))
+        (when conn
+          (clatter.net.irc:irc-check-health conn))))))
+
 (defun render-frame (app)
+  ;; Check connection health periodically (every 30 seconds)
+  (maybe-check-connection-health)
+  
   (unless (dirty-p app)
     (return-from render-frame app))
 

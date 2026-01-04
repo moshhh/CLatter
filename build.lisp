@@ -1,5 +1,5 @@
 ;;; build.lisp - Build script for CLatter executable
-;;; Run with: sbcl --load build.lisp
+;;; Run with: sbcl --non-interactive --load build.lisp
 
 (require :asdf)
 
