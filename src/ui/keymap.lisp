@@ -16,14 +16,16 @@
   (%set-current-buffer app (1- (app-current-buffer-id app))))
 
 (defun %scroll-up (app &optional (n 5))
-  (let ((buf (current-buffer app)))
-    (incf (buffer-scroll-offset buf) n)
-    (mark-dirty app :chat)))
-
-(defun %scroll-down (app &optional (n 5))
+  "Scroll up to see newer messages (decrease offset)."
   (let ((buf (current-buffer app)))
     (setf (buffer-scroll-offset buf)
           (max 0 (- (buffer-scroll-offset buf) n)))
+    (mark-dirty app :chat)))
+
+(defun %scroll-down (app &optional (n 5))
+  "Scroll down to see older messages (increase offset)."
+  (let ((buf (current-buffer app)))
+    (incf (buffer-scroll-offset buf) n)
     (mark-dirty app :chat)))
 
 (defun %toggle-split (app)

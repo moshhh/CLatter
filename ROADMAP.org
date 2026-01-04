@@ -31,7 +31,7 @@
 - [ ] /kick and /ban commands
 - [ ] Channel modes display
 - [ ] User list panel (toggleable)
-- [ ] Timestamps on messages
+- [X] Timestamps on messages (configurable format)
 - [ ] URL detection and highlighting
 - [ ] Desktop notifications (libnotify)
 
@@ -62,9 +62,9 @@
 - [ ] Plugin/scripting system (maybe via Lisp eval)
 - [ ] Theming support (color schemes)
 - [ ] Mouse support for buffer switching
-- [ ] Split-pane view for multiple channels
+- [X] Split-pane view for multiple channels
 - [ ] DCC file transfer support
-- [ ] IRCv3 capabilities (SASL, message-tags, etc.)
+- [X] IRCv3 capabilities (SASL PLAIN authentication)
 - [ ] Matrix bridge support
 - [ ] Spell checking integration
 

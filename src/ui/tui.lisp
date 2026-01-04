@@ -1,7 +1,8 @@
 (in-package #:clatter.ui.tui)
 
 (defun create-layout-windows (app scr)
-  "Create or recreate windows based on current split mode."
+  "Create or recreate windows based on current split mode.
+Layout: input at top (row 0), status below (row 1), chat panes below that."
   (let* ((ui (app-ui app))
          (term-w (de.anvi.croatoan:width scr))
          (term-h (de.anvi.croatoan:height scr))
@@ -9,7 +10,8 @@
          (gap 1)
          (right-x (+ left-w gap))
          (right-w (- term-w right-x))
-         (chat-h (- term-h 2))
+         (chat-y 2)  ;; Chat starts at row 2 (after input and status)
+         (chat-h (- term-h 2))  ;; Same height as before
          (split-p (ui-split-mode ui)))
     (setf (ui-term-w ui) term-w
           (ui-term-h ui) term-h)
@@ -19,46 +21,47 @@
     (when (ui-win-chat2 ui) (de.anvi.ncurses:delwin (de.anvi.croatoan:winptr (ui-win-chat2 ui))))
     (when (ui-win-status ui) (de.anvi.ncurses:delwin (de.anvi.croatoan:winptr (ui-win-status ui))))
     (when (ui-win-input ui) (de.anvi.ncurses:delwin (de.anvi.croatoan:winptr (ui-win-input ui))))
-    ;; Create buffer list window
+    ;; Create buffer list window (full height on left)
     (setf (ui-win-buflist ui)
           (make-instance 'de.anvi.croatoan:window
                          :position (list 0 0)
                          :dimensions (list term-h left-w)
                          :border nil))
-    ;; Create chat window(s) based on split mode
+    ;; Input window at top (row 0)
+    (setf (ui-win-input ui)
+          (make-instance 'de.anvi.croatoan:window
+                         :position (list 0 right-x)
+                         :dimensions (list 1 right-w)
+                         :border nil))
+    ;; Status bar below input (row 1)
+    (setf (ui-win-status ui)
+          (make-instance 'de.anvi.croatoan:window
+                         :position (list 1 right-x)
+                         :dimensions (list 1 right-w)
+                         :border nil))
+    ;; Create chat window(s) based on split mode (starting at row 2)
     (if split-p
         ;; Split mode: two chat panes side by side
         (let* ((pane-w (floor (- right-w 1) 2))  ;; 1 char gap between panes
                (pane2-x (+ right-x pane-w 1)))
           (setf (ui-win-chat ui)
                 (make-instance 'de.anvi.croatoan:window
-                               :position (list 0 right-x)
+                               :position (list chat-y right-x)
                                :dimensions (list chat-h pane-w)
                                :border nil))
           (setf (ui-win-chat2 ui)
                 (make-instance 'de.anvi.croatoan:window
-                               :position (list 0 pane2-x)
+                               :position (list chat-y pane2-x)
                                :dimensions (list chat-h pane-w)
                                :border nil)))
         ;; Single pane mode
         (progn
           (setf (ui-win-chat ui)
                 (make-instance 'de.anvi.croatoan:window
-                               :position (list 0 right-x)
+                               :position (list chat-y right-x)
                                :dimensions (list chat-h right-w)
                                :border nil))
-          (setf (ui-win-chat2 ui) nil)))
-    ;; Status and input windows (always full width of right side)
-    (setf (ui-win-status ui)
-          (make-instance 'de.anvi.croatoan:window
-                         :position (list chat-h right-x)
-                         :dimensions (list 1 right-w)
-                         :border nil))
-    (setf (ui-win-input ui)
-          (make-instance 'de.anvi.croatoan:window
-                         :position (list (1+ chat-h) right-x)
-                         :dimensions (list 1 right-w)
-                         :border nil))))
+          (setf (ui-win-chat2 ui) nil)))))
 
 (defun run-tui (app)
   (de.anvi.croatoan:with-screen (scr
