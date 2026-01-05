@@ -136,10 +136,9 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
                          msg-lines)
                    (setf first-line nil))
                  (push (nreverse msg-lines) message-groups)))
-      ;; Reverse message order (newest first) then flatten
-      ;; Each message's lines stay in correct order
-      (let* ((reversed-groups (reverse message-groups))
-             (display-lines (apply #'append reversed-groups))
+      ;; message-groups is already newest-first (due to push)
+      ;; Flatten and display from top - newest messages at top
+      (let* ((display-lines (apply #'append message-groups))
              (total (length display-lines))
              (start (min offset (max 0 (- total content-h))))
              (visible (subseq display-lines start (min (+ start content-h) total)))
