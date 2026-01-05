@@ -111,8 +111,9 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
          (offset (buffer-scroll-offset buf))
          (time-fmt (let ((cfg clatter.core.commands:*current-config*))
                      (if cfg (clatter.core.config:config-time-format cfg) "%H:%M"))))
-    ;; Build display lines from messages
-    (let ((display-lines nil))
+    ;; Build display lines from messages, grouped by message
+    ;; Each message becomes a list of its display lines (for proper reversal)
+    (let ((message-groups nil))
       (loop for m in msgs
             for ts = (clatter.core.model:message-ts m)
             for time-str = (format-time ts time-fmt)
@@ -123,7 +124,8 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
             for nick-len = (length nick-display)
             for text-width = (max 1 (- content-w nick-len))
             for wrapped = (wrap-text text text-width)
-            do (let ((first-line t))
+            do (let ((msg-lines nil)
+                     (first-line t))
                  (dolist (line wrapped)
                    (push (list :nick (if first-line nick-display
                                          (make-string nick-len :initial-element #\Space))
@@ -131,15 +133,16 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
                                :highlight highlightp
                                :nick-raw nick
                                :first first-line)
-                         display-lines)
-                   (setf first-line nil))))
-      (setf display-lines (nreverse display-lines))
-      ;; For top-input layout: newest messages at top, ascending downward
-      ;; Take the newest messages and reverse so newest is first
-      (let* ((total (length display-lines))
-             (end (max 0 (- total offset)))
-             (start (max 0 (- end content-h)))
-             (visible (reverse (subseq display-lines start end)))
+                         msg-lines)
+                   (setf first-line nil))
+                 (push (nreverse msg-lines) message-groups)))
+      ;; Reverse message order (newest first) then flatten
+      ;; Each message's lines stay in correct order
+      (let* ((reversed-groups (reverse message-groups))
+             (display-lines (apply #'append reversed-groups))
+             (total (length display-lines))
+             (start (min offset (max 0 (- total content-h))))
+             (visible (subseq display-lines start (min (+ start content-h) total)))
              (y 1))
         (dolist (dl visible)
           (when (< y (1+ content-h))
