@@ -134,10 +134,12 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
                          display-lines)
                    (setf first-line nil))))
       (setf display-lines (nreverse display-lines))
+      ;; For top-input layout: newest messages at top, ascending downward
+      ;; Take the newest messages and reverse so newest is first
       (let* ((total (length display-lines))
              (end (max 0 (- total offset)))
              (start (max 0 (- end content-h)))
-             (visible (subseq display-lines start end))
+             (visible (reverse (subseq display-lines start end)))
              (y 1))
         (dolist (dl visible)
           (when (< y (1+ content-h))
