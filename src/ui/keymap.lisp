@@ -85,6 +85,13 @@
   (de.anvi.croatoan:bind screen :key-f10 #'de.anvi.croatoan:exit-event-loop)
   (de.anvi.croatoan:bind screen (coerce '(#\Esc #\q) 'string) #'de.anvi.croatoan:exit-event-loop)
 
+  ;; Ctrl-L to force redraw/refresh (like in vim/less)
+  (de.anvi.croatoan:bind screen (code-char 12)
+    (lambda (o e)
+      (declare (ignore o e))
+      (clatter.ui.tui:create-layout-windows app (ui-screen (app-ui app)))
+      (mark-dirty app :layout :chat :buflist :status :input)))
+
   ;; idle/tick: drain submit queue + redraw + check quit
   (de.anvi.croatoan:bind screen nil
     (lambda (obj event)
