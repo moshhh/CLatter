@@ -237,6 +237,11 @@
      (handle-dcc-command app conn args)
      t)
     
+    ;; /crafterbin <file> - upload file to crafterbin and copy URL to clipboard
+    ((string= cmd "CRAFTERBIN")
+     (handle-crafterbin-command app args)
+     t)
+    
     ;; Unknown command
     (t nil)))
 
@@ -477,8 +482,9 @@
                       "/dcc list - List DCC connections"
                       "/dcc accept [id] - Accept DCC offer"
                       "/dcc reject [id] - Reject DCC offer"
+                      "/crafterbin <file> - Upload file to crafterbin (URL to clipboard)"
                       ""
-                      "Keys: Ctrl-P/N buffers | Ctrl-U/D scroll | Ctrl-W split"
+                      "Keys: Ctrl-P/N buffers | Ctrl-U/D scroll | Ctrl-W split | Ctrl-L refresh"
                       ""
                       "New to IRC? Register: /ns register <password> <email>")))
     (de.anvi.croatoan:submit
@@ -486,6 +492,101 @@
         (clatter.core.dispatch:deliver-message
          app buf
          (clatter.core.model:make-message :level :system :nick "*help*" :text line))))))
+
+(defparameter *crafterbin-url* "https://crafterbin.glennstack.dev"
+  "URL of the CrafterBin service.")
+
+(defun handle-crafterbin-command (app args)
+  "Handle /crafterbin <file> - upload file to crafterbin and copy URL to clipboard."
+  (let ((buf (clatter.core.model:current-buffer app)))
+    (if (= (length args) 0)
+        (de.anvi.croatoan:submit
+          (clatter.core.dispatch:deliver-message
+           app buf
+           (clatter.core.model:make-message :level :error :nick "*"
+                                            :text "Usage: /crafterbin <filepath>")))
+        ;; Expand path and check if file exists
+        (let ((filepath (uiop:native-namestring (uiop:parse-native-namestring args))))
+          (cond
+            ((not (probe-file filepath))
+             (de.anvi.croatoan:submit
+               (clatter.core.dispatch:deliver-message
+                app buf
+                (clatter.core.model:make-message :level :error :nick "*"
+                                                 :text (format nil "File not found: ~a" filepath)))))
+            ((not (zerop (nth-value 2 (uiop:run-program "which curl" :output nil :ignore-error-status t))))
+             (de.anvi.croatoan:submit
+               (clatter.core.dispatch:deliver-message
+                app buf
+                (clatter.core.model:make-message :level :error :nick "*"
+                                                 :text "curl not found in PATH"))))
+            (t
+             ;; Run curl in background thread
+             (de.anvi.croatoan:submit
+               (clatter.core.dispatch:deliver-message
+                app buf
+                (clatter.core.model:make-message :level :system :nick "*crafterbin*"
+                                                 :text (format nil "Uploading ~a..." (file-namestring filepath)))))
+             (bt:make-thread
+              (lambda ()
+                (crafterbin-upload-file app buf filepath))
+              :name "crafterbin-upload")))))))
+
+(defun crafterbin-upload-file (app buf filepath)
+  "Upload file to crafterbin and copy URL to clipboard."
+  (handler-case
+      (multiple-value-bind (output error-output exit-code)
+          (uiop:run-program 
+           (list "curl" "-s" "-X" "POST" "-F" (format nil "file=@~a" filepath) *crafterbin-url*)
+           :output :string
+           :error-output :string
+           :ignore-error-status t)
+        (declare (ignore error-output))
+        (if (= exit-code 0)
+            (let ((url (string-trim '(#\Space #\Newline #\Return) output)))
+              (if (and (> (length url) 0) (search "https://" url))
+                  (progn
+                    ;; Copy to clipboard - try wl-copy first (Wayland), then X11 tools
+                    (let ((copied (or (ignore-errors
+                                        (zerop (nth-value 2 
+                                          (uiop:run-program (list "wl-copy" url)
+                                                            :output nil
+                                                            :ignore-error-status t))))
+                                      (ignore-errors
+                                        (zerop (nth-value 2
+                                          (uiop:run-program (list "xclip" "-selection" "clipboard")
+                                                            :input (make-string-input-stream url)
+                                                            :output nil
+                                                            :ignore-error-status t))))
+                                      (ignore-errors
+                                        (zerop (nth-value 2
+                                          (uiop:run-program (list "xsel" "--clipboard" "--input")
+                                                            :input (make-string-input-stream url)
+                                                            :output nil
+                                                            :ignore-error-status t)))))))
+                      (de.anvi.croatoan:submit
+                        (clatter.core.dispatch:deliver-message
+                         app buf
+                         (clatter.core.model:make-message :level :system :nick "*crafterbin*"
+                                                          :text (if copied
+                                                                    (format nil "Uploaded: ~a (copied to clipboard)" url)
+                                                                    (format nil "Uploaded: ~a" url)))))))
+                  (de.anvi.croatoan:submit
+                    (clatter.core.dispatch:deliver-message
+                     app buf
+                     (clatter.core.model:make-message :level :error :nick "*crafterbin*"
+                                                      :text (format nil "Unexpected response: ~a" output))))))
+            (de.anvi.croatoan:submit
+              (clatter.core.dispatch:deliver-message
+               app buf
+               (clatter.core.model:make-message :level :error :nick "*crafterbin*"
+                                                :text (format nil "Upload failed (exit ~a)" exit-code))))))
+    (error (e)
+      (de.anvi.croatoan:submit
+        (clatter.core.dispatch:deliver-message
+         app buf
+         (clatter.core.model:make-message :level :error :nick "*crafterbin*"
+                                          :text (format nil "Error: ~a" e)))))))
 
 (defun handle-dcc-command (app conn args)
   "Handle /dcc commands.

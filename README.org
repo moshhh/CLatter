@@ -26,12 +26,18 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 - *DCC Support* - Direct client-to-client chat and file transfers
 - *Message Logging* - Automatic logging to =~/.local/share/clatter/logs/=
 - *Log Search* - Search through message history with ~/log search~
+- *CrafterBin Integration* - Upload files to pastebin with ~/crafterbin~
 
 ** Requirements
 
 - SBCL (Steel Bank Common Lisp)
 - Quicklisp
 - ncurses development libraries
+- curl (for ~/crafterbin~ uploads)
+- One of the following for clipboard support (optional):
+  - =xclip= (X11)
+  - =xsel= (X11)
+  - =wl-clipboard= (Wayland)
 
 ** Installation
 
@@ -153,6 +159,7 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | ~/dcc reject [id]~           | Reject pending DCC offer                 |
 | ~/dcc list~                  | List DCC connections                     |
 | ~/dcc close [id]~            | Close DCC connection                     |
+| ~/crafterbin file~           | Upload file to CrafterBin pastebin       |
 | ~/raw line~                  | Send raw IRC command                     |
 | ~/help~                      | Show help                                |
 
@@ -177,6 +184,21 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | Ctrl-R      | Set right pane buffer     |
 | Ctrl-X      | Swap panes                |
 | F10         | Quit                      |
+
+** CrafterBin Integration
+
+CLatter includes built-in support for uploading files to [[https://crafterbin.glennstack.dev][CrafterBin]], a simple pastebin service.
+
+#+begin_src
+/crafterbin /path/to/file.txt
+#+end_src
+
+This will:
+1. Upload the file to CrafterBin
+2. Copy the resulting URL to your clipboard (requires =xclip=, =xsel=, or =wl-copy=)
+3. Display the URL in the chat buffer
+
+Useful for quickly sharing code snippets, logs, or configuration files in IRC channels.
 
 ** License
 
