@@ -16,14 +16,16 @@
   (%set-current-buffer app (1- (app-current-buffer-id app))))
 
 (defun %scroll-up (app &optional (n 5))
-  (let ((buf (current-buffer app)))
-    (incf (buffer-scroll-offset buf) n)
-    (mark-dirty app :chat)))
-
-(defun %scroll-down (app &optional (n 5))
+  "Scroll up to see newer messages (decrease offset)."
   (let ((buf (current-buffer app)))
     (setf (buffer-scroll-offset buf)
           (max 0 (- (buffer-scroll-offset buf) n)))
+    (mark-dirty app :chat)))
+
+(defun %scroll-down (app &optional (n 5))
+  "Scroll down to see older messages (increase offset)."
+  (let ((buf (current-buffer app)))
+    (incf (buffer-scroll-offset buf) n)
     (mark-dirty app :chat)))
 
 (defun %toggle-split (app)
@@ -131,7 +133,7 @@
   (de.anvi.croatoan:bind screen :npage (lambda (o e) (declare (ignore o e)) (%scroll-down app 10)))
   (de.anvi.croatoan:bind screen (code-char 16) (lambda (o e) (declare (ignore o e)) (%buf-prev app)))  ;; Ctrl-P
   (de.anvi.croatoan:bind screen (code-char 14) (lambda (o e) (declare (ignore o e)) (%buf-next app)))  ;; Ctrl-N
-  ;; Alt+Up/Down as alternative scroll (Ctrl-U/D)
+  ;; Ctrl-U/D as alternative scroll
   (de.anvi.croatoan:bind screen (code-char 21) (lambda (o e) (declare (ignore o e)) (%scroll-up app 10)))   ;; Ctrl-U scroll up
   (de.anvi.croatoan:bind screen (code-char 4) (lambda (o e) (declare (ignore o e)) (%scroll-down app 10)))  ;; Ctrl-D scroll down
 
