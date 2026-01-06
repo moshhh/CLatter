@@ -21,6 +21,8 @@ Layout: input at top (row 0), status below (row 1), chat panes below that."
     (when (ui-win-chat2 ui) (de.anvi.ncurses:delwin (de.anvi.croatoan:winptr (ui-win-chat2 ui))))
     (when (ui-win-status ui) (de.anvi.ncurses:delwin (de.anvi.croatoan:winptr (ui-win-status ui))))
     (when (ui-win-input ui) (de.anvi.ncurses:delwin (de.anvi.croatoan:winptr (ui-win-input ui))))
+    ;; Clear the screen to remove artifacts from old layout
+    (de.anvi.croatoan:clear scr)
     ;; Create buffer list window (full height on left)
     (setf (ui-win-buflist ui)
           (make-instance 'de.anvi.croatoan:window

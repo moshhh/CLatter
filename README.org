@@ -15,6 +15,8 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 - *Nick Colorization* - Each nick gets a consistent color based on hash
 - *Nick Highlighting* - Messages mentioning your nick are highlighted
 - *Tab Completion* - Press Tab to complete nicks in the current channel
+- *Input Scrolling* - Long input lines scroll horizontally to keep cursor visible
+- *Readline Keybindings* - Emacs-style cursor movement (Ctrl-A/E/B/F)
 - *Autojoin Management* - Channels are auto-added to autojoin on ~/join~
 - *Multi-buffer Interface* - Server, channel, and query buffers
 - *Command History* - Up/Down arrows to navigate input history
@@ -49,6 +51,23 @@ make clean && make
 #+end_src
 
 On first run, you'll be prompted for a nickname and connected to Libera.Chat.
+
+*** Quick Start
+
+1. Launch CLatter: =./clatter=
+2. Join a channel: =/join #channel=
+3. Send messages: Just type and press Enter
+4. Switch buffers: =Ctrl-P= (previous) / =Ctrl-N= (next)
+5. Scroll history: =Page Up= / =Page Down=
+6. Tab-complete nicks: Start typing a nick and press =Tab=
+7. Quit: =/q= or =F10=
+
+*** Tips
+
+- If the display looks corrupted, press =Ctrl-L= to refresh
+- Use =Ctrl-W= to toggle split-pane view for monitoring two channels
+- Messages mentioning your nick are highlighted
+- Logs are saved to =~/.local/share/clatter/logs/=
 
 ** Configuration
 
@@ -145,14 +164,19 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | Up/Down     | Input history             |
 | Page Up/Down| Scroll chat               |
 | Ctrl-P/N    | Previous/Next buffer      |
+| Ctrl-U/D    | Scroll up/down            |
 | Ctrl-A      | Move to start of line     |
 | Ctrl-E      | Move to end of line       |
+| Ctrl-B      | Move cursor back          |
+| Ctrl-F      | Move cursor forward       |
+| Ctrl-L      | Refresh/redraw screen     |
 | Backspace   | Delete character          |
 | Enter       | Send message/command      |
 | Ctrl-W      | Toggle split-pane view    |
 | Ctrl-]      | Switch active pane        |
 | Ctrl-R      | Set right pane buffer     |
 | Ctrl-X      | Swap panes                |
+| F10         | Quit                      |
 
 ** License
 

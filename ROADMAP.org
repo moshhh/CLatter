@@ -30,6 +30,9 @@
 - [X] /mode command
 - [X] Timestamps on messages (configurable format)
 - [X] /ctcp command for sending CTCP requests
+- [X] Input line horizontal scrolling (keeps cursor visible)
+- [X] Readline-style keybindings (Ctrl-A/E/B/F)
+- [X] Ctrl-L screen refresh
 
 *** v0.2.1 - Resilience
 - [X] Auto-reconnect with exponential backoff
@@ -67,8 +70,14 @@
 - [X] DCC connection management (/dcc list, accept, reject, close)
 - [X] Automatic download directory (~/Downloads/CLatter/)
 
+** Known Issues
+
+- [ ] Terminal resize not auto-detected - use Ctrl-L to refresh after resizing
+- [ ] Multiple tmux clients with different terminal sizes may cause display artifacts
+
 ** Ideas / Wishlist
 
+- [ ] Automatic terminal resize detection (SIGWINCH handling)
 - [ ] Plugin/scripting system (maybe via Lisp eval)
 - [ ] Theming support (color schemes)
 - [ ] Mouse support for buffer switching
