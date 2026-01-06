@@ -108,6 +108,11 @@
   (de.anvi.croatoan:bind screen :key-right (lambda (o e) (declare (ignore o e)) (input-move-right app)))
   (de.anvi.croatoan:bind screen :key-home (lambda (o e) (declare (ignore o e)) (input-move-home app)))
   (de.anvi.croatoan:bind screen :key-end (lambda (o e) (declare (ignore o e)) (input-move-end app)))
+  ;; Emacs/readline-style cursor movement
+  (de.anvi.croatoan:bind screen (code-char 1) (lambda (o e) (declare (ignore o e)) (input-move-home app)))   ;; Ctrl-A beginning
+  (de.anvi.croatoan:bind screen (code-char 5) (lambda (o e) (declare (ignore o e)) (input-move-end app)))    ;; Ctrl-E end
+  (de.anvi.croatoan:bind screen (code-char 2) (lambda (o e) (declare (ignore o e)) (input-move-left app)))   ;; Ctrl-B back
+  (de.anvi.croatoan:bind screen (code-char 6) (lambda (o e) (declare (ignore o e)) (input-move-right app)))  ;; Ctrl-F forward
   (de.anvi.croatoan:bind screen :key-up (lambda (o e) (declare (ignore o e)) (input-history-prev app)))
   (de.anvi.croatoan:bind screen :key-down (lambda (o e) (declare (ignore o e)) (input-history-next app)))
   (de.anvi.croatoan:bind screen #\Newline (lambda (o e) (declare (ignore o e)) (input-submit-line app)))

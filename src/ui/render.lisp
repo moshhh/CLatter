@@ -251,16 +251,33 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
                              (and (> highlights 0) highlights)))))
       (%draw-line wstatus 0 0 (subseq line 0 (min (length line) (de.anvi.croatoan:width wstatus)))))
 
-    ;; input
+    ;; input - with horizontal scrolling when text exceeds window width
     (let* ((st (ui-input ui))
            (prompt "> ")
            (txt (input-text st))
            (cursor (input-cursor st))
-           (full (concatenate 'string prompt txt)))
-      (%draw-line winput 0 0 (subseq full 0 (min (length full) (de.anvi.croatoan:width winput))))
-      ;; move cursor (roughly)
+           (win-w (de.anvi.croatoan:width winput))
+           (prompt-len (length prompt))
+           (visible-w (- win-w prompt-len))  ;; space available for text after prompt
+           ;; Calculate scroll offset to keep cursor visible
+           ;; Leave some margin (5 chars) so user can see context
+           (margin 5)
+           (scroll-offset (cond
+                            ;; Cursor fits in visible area - no scroll
+                            ((< cursor visible-w) 0)
+                            ;; Scroll to keep cursor visible with margin
+                            (t (- cursor (- visible-w margin)))))
+           ;; Extract visible portion of text
+           (visible-end (min (length txt) (+ scroll-offset visible-w)))
+           (visible-txt (subseq txt scroll-offset visible-end))
+           ;; Add scroll indicator if text is scrolled
+           (display-prompt (if (> scroll-offset 0) "…" prompt))
+           (full (concatenate 'string display-prompt visible-txt)))
+      (%draw-line winput 0 0 (subseq full 0 (min (length full) win-w)))
+      ;; Position cursor relative to scroll offset
       (setf (de.anvi.croatoan:cursor-position-y winput) 0)
-      (setf (de.anvi.croatoan:cursor-position-x winput) (min (de.anvi.croatoan:width winput) (+ (length prompt) cursor))))
+      (setf (de.anvi.croatoan:cursor-position-x winput) 
+            (+ (length display-prompt) (- cursor scroll-offset))))
 
     ;; batch refresh to reduce flicker
     (de.anvi.croatoan:mark-for-refresh wbuf)
