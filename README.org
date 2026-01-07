@@ -132,7 +132,9 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | Command                      | Description                              |
 |------------------------------+------------------------------------------|
 | ~/join #channel [key]~       | Join a channel (auto-adds to autojoin)  |
-| ~/part [#channel] [msg]~     | Leave a channel                          |
+| ~/part [#channel] [msg]~     | Leave channel, remove from autojoin      |
+| ~/leave [#channel] [msg]~    | Alias for ~/part~                        |
+| ~/close~                     | Close current buffer (use after ~/part~) |
 | ~/autojoin~                  | List autojoin channels                   |
 | ~/autojoin add #channel~     | Add channel to autojoin                  |
 | ~/autojoin remove #channel~  | Remove channel from autojoin             |
