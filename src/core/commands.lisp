@@ -39,16 +39,26 @@
          (add-to-autojoin app channel)))
      t)
     
-    ;; /part [#channel] [message]
-    ((string= cmd "PART")
+    ;; /part [#channel] [message] - also /leave as alias
+    ;; Note: Buffer removal happens via server PART response, not here
+    ((or (string= cmd "PART") (string= cmd "LEAVE"))
      (let* ((buf (clatter.core.model:active-buffer app))
-            (target (clatter.core.model:buffer-title buf)))
+            (target (if buf (clatter.core.model:buffer-title buf) ""))
+            (channel-to-part nil))
        (if (> (length args) 0)
            (if (char= (char args 0) #\#)
                (multiple-value-bind (channel msg) (split-first-word args)
+                 (setf channel-to-part channel)
                  (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-part channel msg)))
-               (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-part target args)))
-           (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-part target))))
+               (when (> (length target) 0)
+                 (setf channel-to-part target)
+                 (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-part target args))))
+           (when (> (length target) 0)
+             (setf channel-to-part target)
+             (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-part target))))
+       ;; Remove from autojoin config only - buffer stays until we rejoin or restart
+       (when (and channel-to-part (> (length channel-to-part) 0))
+         (remove-from-autojoin app channel-to-part)))
      t)
     
     ;; /msg target message
@@ -70,8 +80,8 @@
     ;; /me action
     ((string= cmd "ME")
      (let* ((buf (clatter.core.model:active-buffer app))
-            (target (clatter.core.model:buffer-title buf)))
-       (when (and (> (length args) 0) (> (length target) 0))
+            (target (if buf (clatter.core.model:buffer-title buf) "")))
+       (when (and buf (> (length args) 0) (> (length target) 0))
          (let ((action-text (format nil "~CACTION ~a~C" (code-char 1) args (code-char 1))))
            (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg target action-text))
            ;; Echo locally
@@ -149,19 +159,20 @@
     ;; /topic [new topic] - view or set channel topic
     ((string= cmd "TOPIC")
      (let* ((buf (clatter.core.model:active-buffer app))
-            (target (clatter.core.model:buffer-title buf)))
-       (if (> (length args) 0)
-           ;; Set topic
-           (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target args))
-           ;; View topic
-           (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target))))
+            (target (if buf (clatter.core.model:buffer-title buf) "")))
+       (when (> (length target) 0)
+         (if (> (length args) 0)
+             ;; Set topic
+             (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target args))
+             ;; View topic
+             (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target)))))
      t)
     
     ;; /kick nick [reason] - kick user from channel
     ((string= cmd "KICK")
      (when (> (length args) 0)
        (let* ((buf (clatter.core.model:active-buffer app))
-              (channel (clatter.core.model:buffer-title buf)))
+              (channel (if buf (clatter.core.model:buffer-title buf) "")))
          (when (and (> (length channel) 0) (char= (char channel 0) #\#))
            (multiple-value-bind (nick reason) (split-first-word args)
              (clatter.net.irc:irc-send conn
@@ -174,7 +185,7 @@
     ((string= cmd "BAN")
      (when (> (length args) 0)
        (let* ((buf (clatter.core.model:active-buffer app))
-              (channel (clatter.core.model:buffer-title buf)))
+              (channel (if buf (clatter.core.model:buffer-title buf) "")))
          (when (and (> (length channel) 0) (char= (char channel 0) #\#))
            (multiple-value-bind (nick rest) (split-first-word args)
              (declare (ignore rest))
@@ -188,7 +199,7 @@
     ((string= cmd "UNBAN")
      (when (> (length args) 0)
        (let* ((buf (clatter.core.model:active-buffer app))
-              (channel (clatter.core.model:buffer-title buf)))
+              (channel (if buf (clatter.core.model:buffer-title buf) "")))
          (when (and (> (length channel) 0) (char= (char channel 0) #\#))
            (multiple-value-bind (nick rest) (split-first-word args)
              (declare (ignore rest))
@@ -200,7 +211,7 @@
     ;; /mode [modes] - view or set channel/user modes
     ((string= cmd "MODE")
      (let* ((buf (clatter.core.model:active-buffer app))
-            (target (clatter.core.model:buffer-title buf)))
+            (target (if buf (clatter.core.model:buffer-title buf) "")))
        (if (> (length args) 0)
            ;; If args starts with # it's a channel, otherwise apply to current target
            (if (char= (char args 0) #\#)
@@ -225,6 +236,37 @@
               app (clatter.core.model:current-buffer app)
               (clatter.core.model:make-message :level :system :nick "*"
                                                :text (format nil "CTCP ~a sent to ~a" ctcp-cmd target)))))))
+     t)
+    
+    ;; /close - close current buffer (use after /part to remove from list)
+    ((string= cmd "CLOSE")
+     (let* ((buf (clatter.core.model:active-buffer app))
+            (buf-id (when buf (clatter.core.model:buffer-id buf)))
+            (title (when buf (clatter.core.model:buffer-title buf))))
+       (cond
+         ((not buf)
+          (de.anvi.croatoan:submit
+            (clatter.core.dispatch:deliver-message
+             app (clatter.core.model:current-buffer app)
+             (clatter.core.model:make-message :level :error :nick "*"
+                                              :text "No buffer to close"))))
+         ((= buf-id 0)
+          (de.anvi.croatoan:submit
+            (clatter.core.dispatch:deliver-message
+             app buf
+             (clatter.core.model:make-message :level :error :nick "*"
+                                              :text "Cannot close server buffer"))))
+         (t
+          ;; Switch to server buffer FIRST, then remove
+          (setf (clatter.core.model:app-current-buffer-id app) 0)
+          (clatter.core.model:mark-dirty app :buflist :chat :status)
+          ;; Now safe to remove
+          (clatter.core.model:remove-buffer app buf-id)
+          (de.anvi.croatoan:submit
+            (clatter.core.dispatch:deliver-message
+             app (clatter.core.model:current-buffer app)
+             (clatter.core.model:make-message :level :system :nick "*"
+                                              :text (format nil "Closed buffer: ~a" title)))))))
      t)
     
     ;; /log [search pattern] - view or search logs
@@ -257,8 +299,8 @@
    /log list - list all logged targets
    /log export [text|json|html] [path] - export logs"
   (let* ((buf (clatter.core.model:active-buffer app))
-         (target (clatter.core.model:buffer-title buf))
-         (kind (clatter.core.model:buffer-kind buf))
+         (target (if buf (clatter.core.model:buffer-title buf) ""))
+         (kind (if buf (clatter.core.model:buffer-kind buf) :server))
          (network clatter.core.logging:*current-network*))
     (cond
       ;; /log export [format] [path] - export logs
@@ -735,11 +777,11 @@
                                                 :text (format nil "Unknown command: /~a" cmd))))))
         ;; It's a chat message - send to active buffer's target (respects split pane)
         (let* ((buf (clatter.core.model:active-buffer app))
-               (target (clatter.core.model:buffer-title buf))
-               (kind (clatter.core.model:buffer-kind buf)))
+               (target (if buf (clatter.core.model:buffer-title buf) ""))
+               (kind (if buf (clatter.core.model:buffer-kind buf) :server)))
           (cond
             ;; Regular IRC channel/query
-            ((and conn (member kind '(:channel :query)) (> (length target) 0))
+            ((and buf conn (member kind '(:channel :query)) (> (length target) 0))
              (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg target line))
              ;; Echo locally
              (de.anvi.croatoan:submit
@@ -749,7 +791,7 @@
                                                  :nick (clatter.net.irc:irc-nick conn)
                                                  :text line))))
             ;; DCC chat buffer
-            ((eq kind :dcc-chat)
+            ((and buf (eq kind :dcc-chat))
              (handle-dcc-chat-input app conn buf line)))))))
 
 (defun handle-dcc-chat-input (app conn buf line)

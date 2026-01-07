@@ -196,49 +196,55 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
     (%clear-and-border winput nil nil)   ;; no border for input
 
     ;; buffer list (inside border: start at y=1, x=1)
+    ;; Skip nil buffers (removed channels)
     (let ((content-w (- (de.anvi.croatoan:width wbuf) 2))
-          (content-h (- (de.anvi.croatoan:height wbuf) 2)))
-      (loop for i from 0 below (min (length (app-buffers app)) content-h)
+          (content-h (- (de.anvi.croatoan:height wbuf) 2))
+          (row 0))
+      (loop for i from 0 below (length (app-buffers app))
             for buf = (aref (app-buffers app) i)
-            for marker = (if (= i (app-current-buffer-id app)) "▶" " ")
-            for unread = (buffer-unread-count buf)
-            for hi = (buffer-highlight-count buf)
-            for line = (format nil "~a~a~@[ (~d)~]~@[ !~d~]"
-                               marker (buffer-title buf)
-                               (and (> unread 0) unread)
-                               (and (> hi 0) hi))
-            do (%draw-line wbuf (1+ i) 1 (subseq line 0 (min (length line) content-w)))))
+            when (and buf (< row content-h))
+            do (let* ((marker (if (= i (app-current-buffer-id app)) "▶" " "))
+                      (unread (buffer-unread-count buf))
+                      (hi (buffer-highlight-count buf))
+                      (line (format nil "~a~a~@[ (~d)~]~@[ !~d~]"
+                                    marker (buffer-title buf)
+                                    (and (> unread 0) unread)
+                                    (and (> hi 0) hi))))
+                 (%draw-line wbuf (1+ row) 1 (subseq line 0 (min (length line) content-w)))
+                 (incf row))))
 
     ;; chat area: render pane(s)
     (let ((left-buf (current-buffer app))
           (active-pane (ui-active-pane ui)))
-      ;; In split mode, show buffer name in border with active indicator
-      (when (ui-split-mode ui)
-        (let ((left-title (format nil " ~a~a "
-                                  (if (eq active-pane :left) "» " "")
-                                  (buffer-title left-buf))))
-          (%clear-and-border wchat left-title))
-        (render-chat-pane wchat left-buf))
-      ;; In normal mode, no title needed
-      (unless (ui-split-mode ui)
-        (render-chat-pane wchat left-buf)))
+      (when left-buf  ;; Guard against nil buffer
+        ;; In split mode, show buffer name in border with active indicator
+        (when (ui-split-mode ui)
+          (let ((left-title (format nil " ~a~a "
+                                    (if (eq active-pane :left) "» " "")
+                                    (buffer-title left-buf))))
+            (%clear-and-border wchat left-title))
+          (render-chat-pane wchat left-buf))
+        ;; In normal mode, no title needed
+        (unless (ui-split-mode ui)
+          (render-chat-pane wchat left-buf))))
     ;; Render second pane if in split mode
     (let ((wchat2 (ui-win-chat2 ui))
           (active-pane (ui-active-pane ui)))
       (when (and wchat2 (ui-split-mode ui))
         (let ((split-buf-id (ui-split-buffer-id ui)))
           (when (and split-buf-id (< split-buf-id (length (app-buffers app))))
-            (let* ((right-buf (aref (app-buffers app) split-buf-id))
-                   (right-title (format nil " ~a~a "
-                                        (if (eq active-pane :right) "» " "")
-                                        (buffer-title right-buf))))
-              (%clear-and-border wchat2 right-title)
-              (render-chat-pane wchat2 right-buf))))))
+            (let ((right-buf (aref (app-buffers app) split-buf-id)))
+              (when right-buf  ;; Guard against nil buffer
+                (let ((right-title (format nil " ~a~a "
+                                           (if (eq active-pane :right) "» " "")
+                                           (buffer-title right-buf))))
+                  (%clear-and-border wchat2 right-title)
+                  (render-chat-pane wchat2 right-buf))))))))
 
     ;; status
     (let* ((buf (current-buffer app))
-           (unread (buffer-unread-count buf))
-           (highlights (buffer-highlight-count buf))
+           (unread (if buf (buffer-unread-count buf) 0))
+           (highlights (if buf (buffer-highlight-count buf) 0))
            (split-p (ui-split-mode ui))
            (right-buf (when (and split-p (ui-split-buffer-id ui)
                                  (< (ui-split-buffer-id ui) (length (app-buffers app))))
@@ -246,7 +252,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
            (line (if split-p
                      (format nil " Ctrl+] pane | Ctrl-W unsplit | Ctrl-P/N left buf | Ctrl-R right buf | Ctrl-X swap")
                      (format nil " [~a]~@[  unread:~d~]~@[  mentions:~d~]  | /q quit | Ctrl-W split | Ctrl-P/N buf | Ctrl-U/D scroll"
-                             (buffer-title buf)
+                             (if buf (buffer-title buf) "---")
                              (and (> unread 0) unread)
                              (and (> highlights 0) highlights)))))
       (%draw-line wstatus 0 0 (subseq line 0 (min (length line) (de.anvi.croatoan:width wstatus)))))

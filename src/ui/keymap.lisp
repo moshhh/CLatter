@@ -1,32 +1,53 @@
 (in-package #:clatter.ui.keymap)
 
+(defun %find-next-valid-buffer (app start-id direction)
+  "Find the next non-nil buffer in the given direction (+1 or -1).
+   Returns the buffer id, wrapping around if needed."
+  (let* ((buffers (app-buffers app))
+         (len (length buffers)))
+    (loop for i from 1 to len
+          for id = (mod (+ start-id (* i direction)) len)
+          when (aref buffers id)
+          return id
+          finally (return 0))))  ;; fallback to server buffer
+
 (defun %set-current-buffer (app id)
-  (setf (app-current-buffer-id app)
-        (mod id (length (app-buffers app))))
-  ;; Clear unread/highlight counts when viewing buffer
-  (let ((buf (current-buffer app)))
-    (setf (clatter.core.model:buffer-unread-count buf) 0)
-    (setf (clatter.core.model:buffer-highlight-count buf) 0))
-  (mark-dirty app :chat :buflist :status :input))
+  ;; Ensure we land on a valid (non-nil) buffer
+  (let* ((buffers (app-buffers app))
+         (len (length buffers))
+         (valid-id (if (and (>= id 0) (< id len) (aref buffers id))
+                       id
+                       (%find-next-valid-buffer app id 1))))
+    (setf (app-current-buffer-id app) valid-id)
+    ;; Clear unread/highlight counts when viewing buffer
+    (let ((buf (current-buffer app)))
+      (when buf
+        (setf (clatter.core.model:buffer-unread-count buf) 0)
+        (setf (clatter.core.model:buffer-highlight-count buf) 0)))
+    (mark-dirty app :chat :buflist :status :input)))
 
 (defun %buf-next (app)
-  (%set-current-buffer app (1+ (app-current-buffer-id app))))
+  (let ((next-id (%find-next-valid-buffer app (app-current-buffer-id app) 1)))
+    (%set-current-buffer app next-id)))
 
 (defun %buf-prev (app)
-  (%set-current-buffer app (1- (app-current-buffer-id app))))
+  (let ((prev-id (%find-next-valid-buffer app (app-current-buffer-id app) -1)))
+    (%set-current-buffer app prev-id)))
 
 (defun %scroll-up (app &optional (n 5))
   "Scroll up to see newer messages (decrease offset)."
   (let ((buf (current-buffer app)))
-    (setf (buffer-scroll-offset buf)
-          (max 0 (- (buffer-scroll-offset buf) n)))
-    (mark-dirty app :chat)))
+    (when buf
+      (setf (buffer-scroll-offset buf)
+            (max 0 (- (buffer-scroll-offset buf) n)))
+      (mark-dirty app :chat))))
 
 (defun %scroll-down (app &optional (n 5))
   "Scroll down to see older messages (increase offset)."
   (let ((buf (current-buffer app)))
-    (incf (buffer-scroll-offset buf) n)
-    (mark-dirty app :chat)))
+    (when buf
+      (incf (buffer-scroll-offset buf) n)
+      (mark-dirty app :chat))))
 
 (defun %toggle-split (app)
   "Toggle split pane mode on/off."
@@ -34,18 +55,19 @@
     (if (ui-split-mode ui)
         ;; Turn off split
         (setf (ui-split-mode ui) nil)
-        ;; Turn on split - use next buffer as second pane
-        (let* ((next-id (mod (1+ (app-current-buffer-id app)) (length (app-buffers app))))
+        ;; Turn on split - use next valid buffer as second pane
+        (let* ((next-id (%find-next-valid-buffer app (app-current-buffer-id app) 1))
                (left-buf (aref (app-buffers app) (app-current-buffer-id app)))
                (right-buf (aref (app-buffers app) next-id)))
-          (setf (ui-split-mode ui) :horizontal
-                (ui-split-buffer-id ui) next-id
-                (ui-active-pane ui) :left)
-          ;; Clear unread counts for both visible buffers
-          (setf (buffer-unread-count left-buf) 0
-                (buffer-highlight-count left-buf) 0
-                (buffer-unread-count right-buf) 0
-                (buffer-highlight-count right-buf) 0)))
+          (when (and left-buf right-buf)
+            (setf (ui-split-mode ui) :horizontal
+                  (ui-split-buffer-id ui) next-id
+                  (ui-active-pane ui) :left)
+            ;; Clear unread counts for both visible buffers
+            (setf (buffer-unread-count left-buf) 0
+                  (buffer-highlight-count left-buf) 0
+                  (buffer-unread-count right-buf) 0
+                  (buffer-highlight-count right-buf) 0))))
     ;; Recreate windows with new layout
     (clatter.ui.tui:create-layout-windows app (ui-screen ui))
     (mark-dirty app :layout :chat :buflist :status :input)))

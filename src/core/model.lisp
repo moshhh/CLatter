@@ -76,11 +76,51 @@
   (aref (app-buffers app) id))
 
 (defun current-buffer (app)
-  (find-buffer app (app-current-buffer-id app)))
+  "Return the current buffer. If the buffer at current-buffer-id is nil,
+   find the next valid buffer and update current-buffer-id."
+  (let ((buf (find-buffer app (app-current-buffer-id app))))
+    (if buf
+        buf
+        ;; Current buffer is nil, find next valid one
+        (loop for i from 0 below (length (app-buffers app))
+              for b = (aref (app-buffers app) i)
+              when b do (setf (app-current-buffer-id app) i)
+                        (return b)
+              finally (return nil)))))
 
 (defun active-buffer (app)
   "Return the buffer that should receive input (respects active pane in split mode)."
   (let ((ui (app-ui app)))
     (if (and ui (ui-split-mode ui) (eq (ui-active-pane ui) :right))
-        (find-buffer app (ui-split-buffer-id ui))
+        (let ((right-buf (find-buffer app (ui-split-buffer-id ui))))
+          (if right-buf
+              right-buf
+              ;; Right buffer is nil, fall back to current-buffer and disable split
+              (progn
+                (setf (ui-split-mode ui) nil)
+                (current-buffer app))))
         (current-buffer app))))
+
+(defun remove-buffer (app buffer-id)
+  "Remove a buffer from the app. Cannot remove the server buffer (id 0).
+   Returns t if removed, nil otherwise."
+  (when (and (> buffer-id 0) (< buffer-id (length (app-buffers app))))
+    (let ((buffers (app-buffers app))
+          (ui (app-ui app)))
+      ;; Mark the buffer slot as nil (we can't easily shrink the vector without breaking IDs)
+      (setf (aref buffers buffer-id) nil)
+      ;; If current buffer was removed, switch to server buffer
+      (when (= (app-current-buffer-id app) buffer-id)
+        (setf (app-current-buffer-id app) 0))
+      ;; If split buffer was removed, disable split mode
+      (when (and (ui-split-mode ui) (= (ui-split-buffer-id ui) buffer-id))
+        (setf (ui-split-mode ui) nil
+              (ui-split-buffer-id ui) nil))
+      (mark-dirty app :buflist :chat :status)
+      t)))
+
+(defun find-buffer-by-title (app title)
+  "Find a buffer by its title. Returns the buffer or nil."
+  (loop for buf across (app-buffers app)
+        when (and buf (string-equal (buffer-title buf) title))
+        return buf))
