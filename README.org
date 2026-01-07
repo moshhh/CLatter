@@ -20,7 +20,7 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 - *Autojoin Management* - Channels are auto-added to autojoin on ~/join~
 - *Multi-buffer Interface* - Server, channel, and query buffers
 - *Command History* - Up/Down arrows to navigate input history
-- *Scrollback* - Page Up/Down to scroll through message history
+- *Scrollback* - Ctrl-U/D to scroll through message history
 - *Split-Pane View* - View two channels side-by-side
 - *CTCP Support* - Responds to VERSION, PING, TIME requests
 - *DCC Support* - Direct client-to-client chat and file transfers
@@ -64,7 +64,7 @@ On first run, you'll be prompted for a nickname and connected to Libera.Chat.
 2. Join a channel: =/join #channel=
 3. Send messages: Just type and press Enter
 4. Switch buffers: =Ctrl-P= (previous) / =Ctrl-N= (next)
-5. Scroll history: =Page Up= / =Page Down=
+5. Scroll history: =Ctrl-U= / =Ctrl-D=
 6. Tab-complete nicks: Start typing a nick and press =Tab=
 7. Quit: =/q= or =F10=
 
@@ -171,9 +171,8 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 |-------------+---------------------------|
 | Tab         | Nick completion           |
 | Up/Down     | Input history             |
-| Page Up/Down| Scroll chat               |
+| Ctrl-U/D    | Scroll chat history       |
 | Ctrl-P/N    | Previous/Next buffer      |
-| Ctrl-U/D    | Scroll up/down            |
 | Ctrl-A      | Move to start of line     |
 | Ctrl-E      | Move to end of line       |
 | Ctrl-B      | Move cursor back          |

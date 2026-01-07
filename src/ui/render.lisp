@@ -101,6 +101,19 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
         (setf (de.anvi.croatoan:cursor-position-x win) 2)
         (format win "~a" title)))))
 
+(defun level-color (level)
+  "Return the color for a message level."
+  (case level
+    (:join :green)
+    (:part :yellow)
+    (:quit :yellow)
+    (:kick :red)
+    (:mode :cyan)
+    (:notice :cyan)
+    (:system :blue)
+    (:error :red)
+    (otherwise nil)))  ;; nil means use nick color for :chat
+
 (defun render-chat-pane (win buf)
   "Render a buffer's messages into a chat window pane."
   (let* ((msgs (ring->list (buffer-scrollback buf)))
@@ -119,6 +132,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
             for time-str = (format-time ts time-fmt)
             for nick = (or (clatter.core.model:message-nick m) "*")
             for text = (clatter.core.model:message-text m)
+            for level = (clatter.core.model:message-level m)
             for highlightp = (clatter.core.model:message-highlight m)
             for nick-display = (format nil "[~a] ~a: " time-str nick)
             for nick-len = (length nick-display)
@@ -132,6 +146,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
                                :text line
                                :highlight highlightp
                                :nick-raw nick
+                               :level level
                                :first first-line)
                          msg-lines)
                    (setf first-line nil))
@@ -145,26 +160,34 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
              (y 1))
         (dolist (dl visible)
           (when (< y (1+ content-h))
-            (let ((nick-display (getf dl :nick))
-                  (text-display (getf dl :text))
-                  (highlightp (getf dl :highlight))
-                  (nick-raw (getf dl :nick-raw))
-                  (firstp (getf dl :first)))
+            (let* ((nick-display (getf dl :nick))
+                   (text-display (getf dl :text))
+                   (highlightp (getf dl :highlight))
+                   (nick-raw (getf dl :nick-raw))
+                   (level (getf dl :level))
+                   (firstp (getf dl :first))
+                   (lvl-color (level-color level)))
               (setf (de.anvi.croatoan:cursor-position-y win) y)
               (setf (de.anvi.croatoan:cursor-position-x win) 1)
-              (if highlightp
-                  ;; Highlighted messages: bold magenta for visibility without harsh background
-                  (de.anvi.croatoan:add-string win nick-display
-                                               :fgcolor :magenta
-                                               :attributes '(:bold))
-                  (if firstp
-                      (de.anvi.croatoan:add-string win nick-display :fgcolor (nick-color nick-raw))
-                      (de.anvi.croatoan:add-string win nick-display)))
-              (if highlightp
-                  (de.anvi.croatoan:add-string win text-display
-                                               :fgcolor :magenta
-                                               :attributes '(:bold))
-                  (de.anvi.croatoan:add-string win text-display)))
+              (cond
+                ;; Highlighted messages: bold magenta
+                (highlightp
+                 (de.anvi.croatoan:add-string win nick-display
+                                              :fgcolor :magenta
+                                              :attributes '(:bold))
+                 (de.anvi.croatoan:add-string win text-display
+                                              :fgcolor :magenta
+                                              :attributes '(:bold)))
+                ;; Level-colored messages (join/part/system/etc)
+                (lvl-color
+                 (de.anvi.croatoan:add-string win nick-display :fgcolor lvl-color)
+                 (de.anvi.croatoan:add-string win text-display :fgcolor lvl-color))
+                ;; Regular chat messages - nick colored, text default
+                (t
+                 (if firstp
+                     (de.anvi.croatoan:add-string win nick-display :fgcolor (nick-color nick-raw))
+                     (de.anvi.croatoan:add-string win nick-display))
+                 (de.anvi.croatoan:add-string win text-display))))
             (incf y)))))))
 
 (defun maybe-check-connection-health ()
