@@ -35,7 +35,7 @@
 (defparameter *wanted-caps* '("server-time" "away-notify" "multi-prefix" "account-notify" 
                                "message-tags" "draft/typing" "typing"
                                "batch" "draft/chathistory" "chathistory"
-                               "labeled-response")
+                               "labeled-response" "extended-join")
   "List of IRCv3 capabilities to request from the server.")
 
 (defun make-irc-connection (app network-id network-config)
@@ -317,16 +317,18 @@
              (irc-handle-ctcp conn sender-nick target raw-text)
              (irc-deliver-notice conn target sender-nick text))))
       
-      ;; JOIN
+      ;; JOIN - with extended-join: channel account realname
       ((string= command "JOIN")
        (let* ((channel (first params))
+              (account (second params))  ; extended-join: account or "*" if not logged in
+              (realname (third params))  ; extended-join: realname
               (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
               (nick (clatter.core.protocol:prefix-nick parsed-prefix)))
          (if (string= nick (irc-nick conn))
              ;; We joined - create buffer
              (irc-create-channel-buffer conn channel)
-             ;; Someone else joined
-             (irc-deliver-join conn channel nick))))
+             ;; Someone else joined - pass account info if available
+             (irc-deliver-join conn channel nick account realname))))
       
       ;; PART
       ((string= command "PART")
@@ -494,18 +496,25 @@
          app buf
          (clatter.core.model:make-message :level :notice :nick sender-nick :text display-text))))))
 
-(defun irc-deliver-join (conn channel nick)
-  "Deliver a JOIN notification and add nick to member list."
+(defun irc-deliver-join (conn channel nick &optional account realname)
+  "Deliver a JOIN notification and add nick to member list.
+   ACCOUNT and REALNAME are from extended-join capability."
   (let ((app (irc-app conn)))
     (de.anvi.croatoan:submit
       (let ((buf (irc-find-buffer conn channel)))
         (when buf
           ;; Add nick to member list
           (setf (gethash nick (clatter.core.model:buffer-members buf)) t)
-          (clatter.core.dispatch:deliver-message
-           app buf
-           (clatter.core.model:make-message :level :join :nick nick
-                                            :text (format nil "~a has joined ~a" nick channel))))))))
+          ;; Format message with account info if available
+          (let ((msg (cond
+                       ;; Has account (not "*" which means not logged in)
+                       ((and account (not (string= account "*")))
+                        (format nil "~a (~a) has joined ~a" nick account channel))
+                       ;; No account info
+                       (t (format nil "~a has joined ~a" nick channel)))))
+            (clatter.core.dispatch:deliver-message
+             app buf
+             (clatter.core.model:make-message :level :join :nick nick :text msg))))))))
 
 (defun irc-deliver-part (conn channel nick message)
   "Deliver a PART notification and remove nick from member list."
@@ -544,7 +553,7 @@
               do (clatter.core.dispatch:deliver-message
                   app buf
                   (clatter.core.model:make-message 
-                   :level :system :nick nick
+                   :level :away :nick nick
                    :text (if (and away-msg (> (length away-msg) 0))
                              (format nil "~a is now away: ~a" nick away-msg)
                              (format nil "~a is no longer away" nick))))))))

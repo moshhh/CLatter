@@ -107,6 +107,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
     (:join :green)
     (:part :yellow)
     (:quit :yellow)
+    (:away :magenta)
     (:kick :red)
     (:mode :cyan)
     (:notice :cyan)
