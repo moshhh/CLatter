@@ -18,7 +18,8 @@
    (unread-count    :initform 0 :accessor buffer-unread-count)
    (highlight-count :initform 0 :accessor buffer-highlight-count)
    (scroll-offset   :initform 0 :accessor buffer-scroll-offset)
-   (members         :initform (make-hash-table :test 'equal) :accessor buffer-members)))
+   (members         :initform (make-hash-table :test 'equal) :accessor buffer-members)
+   (typing-users    :initform (make-hash-table :test 'equalp) :accessor buffer-typing-users)))
 
 (defun make-buffer (&key id (kind :channel) (title ""))
   (make-instance 'buffer :id id :kind kind :title title))
@@ -144,3 +145,21 @@
     (maphash (lambda (k v) (declare (ignore v)) (push k nicks))
              (app-ignore-list app))
     (sort nicks #'string-lessp)))
+
+(defun get-typing-nicks (buf &optional (timeout 5))
+  "Return list of nicks currently typing in buffer.
+   Removes stale entries older than TIMEOUT seconds."
+  (when buf
+    (let ((typing-users (buffer-typing-users buf))
+          (now (get-universal-time))
+          (nicks nil)
+          (stale nil))
+      (maphash (lambda (nick ts)
+                 (if (> (- now ts) timeout)
+                     (push nick stale)
+                     (push nick nicks)))
+               typing-users)
+      ;; Clean up stale entries
+      (dolist (nick stale)
+        (remhash nick typing-users))
+      (sort nicks #'string-lessp))))

@@ -26,7 +26,9 @@
    (ping-sent-time :initform nil :accessor irc-ping-sent-time)))
 
 ;; IRCv3 capabilities we want to request
-(defparameter *wanted-caps* '("server-time" "away-notify" "multi-prefix" "account-notify")
+;; Note: typing indicator names vary by server - try both draft/typing and typing
+(defparameter *wanted-caps* '("server-time" "away-notify" "multi-prefix" "account-notify" 
+                               "message-tags" "draft/typing" "typing")
   "List of IRCv3 capabilities to request from the server.")
 
 (defun make-irc-connection (app network-id network-config)
@@ -345,6 +347,16 @@
       ((string= command "366")
        nil)
       
+      ;; TAGMSG - handle typing indicators and other client tags
+      ((string= command "TAGMSG")
+       (let* ((parsed-prefix (clatter.core.protocol:parse-prefix prefix))
+              (nick (clatter.core.protocol:prefix-nick parsed-prefix))
+              (target (first params))
+              (parsed-tags (clatter.core.protocol:parse-irc-tags tags))
+              (typing-state (cdr (assoc "+typing" parsed-tags :test #'string=))))
+         (when typing-state
+           (irc-handle-typing conn nick target typing-state))))
+      
       ;; Other numerics - log to server buffer
       ((every #'digit-char-p command)
        (let ((text (format nil "[~a] ~{~a~^ ~}" command (cdr params))))
@@ -517,6 +529,30 @@
                    :text (if (and away-msg (> (length away-msg) 0))
                              (format nil "~a is now away: ~a" nick away-msg)
                              (format nil "~a is no longer away" nick))))))))
+
+(defun irc-handle-typing (conn nick target typing-state)
+  "Handle incoming typing indicator from another user."
+  (let ((app (irc-app conn)))
+    ;; Don't show our own typing
+    (unless (string-equal nick (irc-nick conn))
+      (de.anvi.croatoan:submit
+        (let ((buf (irc-find-buffer conn target)))
+          (when buf
+            ;; Store typing state in buffer's typing-users hash
+            (let ((typing-users (clatter.core.model:buffer-typing-users buf)))
+              (cond
+                ((string-equal typing-state "active")
+                 (setf (gethash nick typing-users) (get-universal-time)))
+                ((or (string-equal typing-state "done")
+                     (string-equal typing-state "paused"))
+                 (remhash nick typing-users)))
+              (clatter.core.model:mark-dirty app :status))))))))
+
+(defun irc-send-typing (conn target state)
+  "Send typing indicator if the capability is enabled.
+   STATE should be :active, :paused, or :done."
+  (when (member "message-tags" (irc-cap-enabled conn) :test #'string-equal)
+    (irc-send conn (clatter.core.protocol:irc-typing target state))))
 
 (defun irc-add-members (conn channel names-str)
   "Parse NAMES reply and add members to channel buffer."

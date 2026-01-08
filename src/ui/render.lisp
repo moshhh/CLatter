@@ -268,16 +268,22 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
     (let* ((buf (current-buffer app))
            (unread (if buf (buffer-unread-count buf) 0))
            (highlights (if buf (buffer-highlight-count buf) 0))
+           (typing-nicks (when buf (clatter.core.model:get-typing-nicks buf)))
            (split-p (ui-split-mode ui))
            (right-buf (when (and split-p (ui-split-buffer-id ui)
                                  (< (ui-split-buffer-id ui) (length (app-buffers app))))
                         (aref (app-buffers app) (ui-split-buffer-id ui))))
+           (typing-str (when typing-nicks
+                         (if (= (length typing-nicks) 1)
+                             (format nil "~a is typing..." (first typing-nicks))
+                             (format nil "~{~a~^, ~} are typing..." typing-nicks))))
            (line (if split-p
                      (format nil " Ctrl+] pane | Ctrl-W unsplit | Ctrl-P/N left buf | Ctrl-R right buf | Ctrl-X swap")
-                     (format nil " [~a]~@[  unread:~d~]~@[  mentions:~d~]  | /q quit | Ctrl-W split | Ctrl-P/N buf | Ctrl-U/D scroll"
+                     (format nil " [~a]~@[  unread:~d~]~@[  mentions:~d~]~@[  ~a~]"
                              (if buf (buffer-title buf) "---")
                              (and (> unread 0) unread)
-                             (and (> highlights 0) highlights)))))
+                             (and (> highlights 0) highlights)
+                             typing-str))))
       (%draw-line wstatus 0 0 (subseq line 0 (min (length line) (de.anvi.croatoan:width wstatus)))))
 
     ;; input - with horizontal scrolling when text exceeds window width

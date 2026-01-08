@@ -236,6 +236,24 @@
                        (format nil "~C~A~C" (code-char 1) command (code-char 1)))))
     (irc-notice target ctcp-text)))
 
+(defun irc-tagmsg (target &rest tags)
+  "Format a TAGMSG with client tags. TAGS is a plist of tag names and values.
+   Example: (irc-tagmsg \"#channel\" \"+typing\" \"active\")"
+  (let ((tag-str (with-output-to-string (s)
+                   (write-char #\@ s)
+                   (loop for (name value) on tags by #'cddr
+                         for first = t then nil
+                         do (unless first (write-char #\; s))
+                            (write-string name s)
+                            (when value
+                              (write-char #\= s)
+                              (write-string value s))))))
+    (format nil "~a TAGMSG ~a" tag-str target)))
+
+(defun irc-typing (target state)
+  "Send typing indicator to TARGET. STATE is :active, :paused, or :done."
+  (irc-tagmsg target "+typing" (string-downcase (symbol-name state))))
+
 ;;; Numeric reply codes
 
 (defparameter +rpl-welcome+ "001")

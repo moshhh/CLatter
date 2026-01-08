@@ -14,6 +14,7 @@
    #:mark-dirty #:dirty-p #:clear-dirty
    #:buffer #:make-buffer #:buffer-id #:buffer-title #:buffer-kind #:buffer-scrollback
    #:buffer-unread-count #:buffer-highlight-count #:buffer-scroll-offset #:buffer-members
+   #:buffer-typing-users #:get-typing-nicks
    #:ui-win-chat2 #:ui-split-mode #:ui-split-buffer-id #:ui-active-pane
    #:message #:make-message #:message-ts #:message-level #:message-nick #:message-text #:message-highlight
    #:ui-state #:make-ui-state #:ui-input #:ui-screen
@@ -48,6 +49,7 @@
    #:irc-nick #:irc-user #:irc-pass #:irc-join #:irc-part
    #:irc-privmsg #:irc-notice #:irc-quit #:irc-pong #:irc-ping #:irc-cap
    #:irc-whois #:irc-topic #:irc-kick #:irc-mode #:irc-away #:irc-ctcp-reply
+   #:irc-tagmsg #:irc-typing
    #:+rpl-welcome+ #:+rpl-yourhost+ #:+rpl-created+ #:+rpl-myinfo+ #:+rpl-isupport+
    #:+rpl-namreply+ #:+rpl-endofnames+ #:+rpl-motd+ #:+rpl-motdstart+ #:+rpl-endofmotd+
    #:+rpl-topic+ #:+rpl-topicwhotime+ #:+err-nicknameinuse+
@@ -148,6 +150,8 @@
    #:irc-state #:irc-nick #:irc-network-config
    #:irc-reconnect-enabled
    #:irc-check-health
+   #:irc-cap-enabled
+   #:irc-send-typing
    #:irc-app
    #:start-irc-connection))
 

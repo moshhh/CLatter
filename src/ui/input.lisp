@@ -1,5 +1,9 @@
 (in-package #:clatter.ui.input)
 
+;; Track last typing notification time to avoid spamming
+(defvar *last-typing-sent* 0)
+(defparameter *typing-throttle* 3)  ; seconds between typing notifications
+
 (defun input-set-text (app new-text &optional (cursor (length new-text)))
   (setf (input-text (ui-input (app-ui app))) new-text)
   (setf (input-cursor (ui-input (app-ui app))) cursor)
@@ -9,13 +13,25 @@
 (defun %istate (app)
   (ui-input (app-ui app)))
 
+(defun maybe-send-typing (app)
+  "Send typing notification if enough time has passed since last one."
+  (let ((now (get-universal-time))
+        (conn clatter.core.commands:*current-connection*))
+    (when (and conn (> (- now *last-typing-sent*) *typing-throttle*))
+      (let ((buf (clatter.core.model:active-buffer app)))
+        (when (and buf (not (eq (clatter.core.model:buffer-kind buf) :server)))
+          (setf *last-typing-sent* now)
+          (clatter.net.irc:irc-send-typing conn (clatter.core.model:buffer-title buf) :active))))))
+
 (defun input-insert-char (app ch)
   (let* ((st (%istate app))
          (s (input-text st))
          (i (input-cursor st)))
     (setf (input-text st) (concatenate 'string (subseq s 0 i) (string ch) (subseq s i)))
     (incf (input-cursor st))
-    (mark-dirty app :input)))
+    (mark-dirty app :input)
+    ;; Send typing notification
+    (maybe-send-typing app)))
 
 (defun input-backspace (app)
   (let* ((st (%istate app))
@@ -90,8 +106,13 @@
       (let ((hist (input-history st)))
         (vector-push-extend line hist)
         (setf (input-history-pos st) nil))
-      ;; Handle via command system
+      ;; Send typing done notification
       (let ((conn clatter.core.commands:*current-connection*))
+        (when conn
+          (let ((buf (clatter.core.model:active-buffer app)))
+            (when (and buf (not (eq (clatter.core.model:buffer-kind buf) :server)))
+              (clatter.net.irc:irc-send-typing conn (clatter.core.model:buffer-title buf) :done))))
+        ;; Handle via command system
         (clatter.core.commands:handle-input-line app conn line)))
     (input-set-text app "" 0)))
 
