@@ -15,6 +15,8 @@
    ;; SASL state
    (sasl-state     :initform nil :accessor irc-sasl-state)  ; nil :requested :authenticating :done
    (cap-negotiating :initform nil :accessor irc-cap-negotiating)
+   ;; IRCv3 capabilities - track what's enabled
+   (cap-enabled    :initform nil :accessor irc-cap-enabled)  ; list of enabled caps
    ;; Reconnection state
    (reconnect-enabled :initform t :accessor irc-reconnect-enabled)
    (reconnect-attempts :initform 0 :accessor irc-reconnect-attempts)
@@ -22,6 +24,10 @@
    ;; Health monitoring
    (last-activity  :initform (get-universal-time) :accessor irc-last-activity)
    (ping-sent-time :initform nil :accessor irc-ping-sent-time)))
+
+;; IRCv3 capabilities we want to request
+(defparameter *wanted-caps* '("server-time" "away-notify" "multi-prefix" "account-notify")
+  "List of IRCv3 capabilities to request from the server.")
 
 (defun make-irc-connection (app network-id network-config)
   (make-instance 'irc-connection
@@ -120,29 +126,68 @@
     (setf (irc-sasl-state conn) :authenticating)
     (irc-send conn (format nil "AUTHENTICATE ~a" encoded))))
 
+(defun parse-cap-list (caps-string)
+  "Parse a space-separated capability list, handling values like 'cap=value'."
+  (when caps-string
+    (mapcar (lambda (cap)
+              (let ((eq-pos (position #\= cap)))
+                (if eq-pos
+                    (subseq cap 0 eq-pos)  ; strip value part
+                    cap)))
+            (uiop:split-string caps-string :separator " "))))
+
+(defun find-matching-caps (available wanted)
+  "Find capabilities from WANTED that are in AVAILABLE."
+  (remove-if-not (lambda (w)
+                   (member w available :test #'string-equal))
+                 wanted))
+
 (defun irc-handle-cap (conn params)
-  "Handle CAP response for SASL negotiation."
-  (let ((subcommand (second params))
-        (caps (third params)))
+  "Handle CAP response for IRCv3 capability negotiation."
+  (let* ((subcommand (second params))
+         (caps-raw (or (third params) ""))
+         ;; Handle multi-line CAP LS (marked with *)
+         (is-multiline (string= (second params) "*"))
+         (caps-string (if is-multiline (fourth params) caps-raw)))
     (cond
-      ;; CAP LS response - check for SASL support
-      ((string-equal subcommand "LS")
-       (if (search "sasl" caps :test #'char-equal)
-           (progn
-             (setf (irc-sasl-state conn) :requested)
-             (irc-send conn "CAP REQ :sasl"))
-           (progn
-             (irc-log-system conn "Server does not support SASL")
-             (irc-send conn "CAP END")
-             (irc-send-registration conn))))
-      ;; CAP ACK - SASL accepted, start authentication
+      ;; CAP LS response - request capabilities we want
+      ((or (string-equal subcommand "LS")
+           (and is-multiline (string-equal (third params) "LS")))
+       (let* ((available (parse-cap-list caps-string))
+              (cfg (irc-network-config conn))
+              (want-sasl (and (clatter.core.config:network-config-sasl cfg)
+                              (clatter.core.config:get-network-password cfg)))
+              (caps-to-request (find-matching-caps available *wanted-caps*)))
+         ;; Add sasl if we want it and it's available
+         (when (and want-sasl (member "sasl" available :test #'string-equal))
+           (push "sasl" caps-to-request)
+           (setf (irc-sasl-state conn) :requested))
+         (if caps-to-request
+             (progn
+               (irc-log-system conn "Requesting capabilities: ~{~a~^, ~}" caps-to-request)
+               (irc-send conn (format nil "CAP REQ :~{~a~^ ~}" caps-to-request)))
+             (progn
+               (irc-log-system conn "No IRCv3 capabilities to request")
+               (irc-send conn "CAP END")
+               (irc-send-registration conn)))))
+      
+      ;; CAP ACK - capabilities accepted
       ((string-equal subcommand "ACK")
-       (when (search "sasl" caps :test #'char-equal)
-         (irc-send conn "AUTHENTICATE PLAIN")
-         (irc-send-registration conn)))
-      ;; CAP NAK - SASL rejected
+       (let ((acked (parse-cap-list caps-string)))
+         (setf (irc-cap-enabled conn) (append (irc-cap-enabled conn) acked))
+         (irc-log-system conn "Enabled capabilities: ~{~a~^, ~}" acked)
+         ;; If SASL was acked, start authentication
+         (if (member "sasl" acked :test #'string-equal)
+             (progn
+               (irc-send conn "AUTHENTICATE PLAIN")
+               (irc-send-registration conn))
+             (progn
+               (irc-send conn "CAP END")
+               (irc-send-registration conn)))))
+      
+      ;; CAP NAK - capabilities rejected
       ((string-equal subcommand "NAK")
-       (irc-log-system conn "SASL capability rejected")
+       (irc-log-system conn "Capabilities rejected: ~a" caps-string)
        (irc-send conn "CAP END")
        (irc-send-registration conn)))))
 
@@ -170,7 +215,8 @@
   "Handle a parsed IRC message."
   (let ((command (clatter.core.protocol:irc-message-command msg))
         (params (clatter.core.protocol:irc-message-params msg))
-        (prefix (clatter.core.protocol:irc-message-prefix msg)))
+        (prefix (clatter.core.protocol:irc-message-prefix msg))
+        (tags (clatter.core.protocol:irc-message-tags msg)))
     (cond
       ;; PING -> PONG
       ((string= command "PING")
@@ -231,13 +277,14 @@
               (raw-text (second params))
               (text (clatter.core.protocol:strip-irc-formatting raw-text))
               (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
-              (sender-nick (clatter.core.protocol:prefix-nick parsed-prefix)))
+              (sender-nick (clatter.core.protocol:prefix-nick parsed-prefix))
+              (server-time (clatter.core.protocol:get-server-time tags)))
          ;; Check for CTCP (starts and ends with \x01)
          (if (and (> (length raw-text) 1)
                   (char= (char raw-text 0) (code-char 1))
                   (char= (char raw-text (1- (length raw-text))) (code-char 1)))
              (irc-handle-ctcp conn sender-nick target raw-text)
-             (irc-deliver-chat conn target sender-nick text))))
+             (irc-deliver-chat conn target sender-nick text server-time))))
       
       ;; NOTICE
       ((string= command "NOTICE")
@@ -278,6 +325,13 @@
               (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
               (nick (clatter.core.protocol:prefix-nick parsed-prefix)))
          (irc-deliver-quit conn nick message)))
+      
+      ;; AWAY - IRCv3 away-notify capability
+      ((string= command "AWAY")
+       (let* ((parsed-prefix (clatter.core.protocol:parse-prefix prefix))
+              (nick (clatter.core.protocol:prefix-nick parsed-prefix))
+              (away-msg (first params)))
+         (irc-deliver-away conn nick away-msg)))
       
       ;; 353 RPL_NAMREPLY - channel member list
       ((string= command "353")
@@ -364,8 +418,9 @@
       (t
        (irc-log-system conn "CTCP ~a from ~a: ~a" ctcp-cmd sender-nick ctcp-args)))))
 
-(defun irc-deliver-chat (conn target sender-nick text)
-  "Deliver a PRIVMSG to the appropriate buffer."
+(defun irc-deliver-chat (conn target sender-nick text &optional server-time)
+  "Deliver a PRIVMSG to the appropriate buffer.
+   SERVER-TIME is optional IRCv3 server-time (universal-time format)."
   (let ((app (irc-app conn)))
     (de.anvi.croatoan:submit
       ;; For channels, target is the channel name
@@ -375,10 +430,11 @@
                                 target
                                 sender-nick))
              (buf (irc-find-or-create-buffer conn buffer-target))
-             (highlight (search (irc-nick conn) text :test #'char-equal)))
+             (highlight (search (irc-nick conn) text :test #'char-equal))
+             (ts (or server-time (get-universal-time))))
         (clatter.core.dispatch:deliver-message
          app buf
-         (clatter.core.model:make-message :level :chat :nick sender-nick :text text)
+         (clatter.core.model:make-message :level :chat :nick sender-nick :text text :ts ts)
          :highlightp highlight)))))
 
 (defun irc-deliver-notice (conn target sender-nick text)
@@ -440,8 +496,25 @@
       ;; Remove nick from all channel buffers
       (loop for i from 1 below (length (clatter.core.model:app-buffers app))
             for buf = (aref (clatter.core.model:app-buffers app) i)
-            when (gethash nick (clatter.core.model:buffer-members buf))
+            when (and buf (gethash nick (clatter.core.model:buffer-members buf)))
               do (remhash nick (clatter.core.model:buffer-members buf))))))
+
+(defun irc-deliver-away (conn nick away-msg)
+  "Deliver an AWAY notification (IRCv3 away-notify).
+   If AWAY-MSG is nil or empty, user has returned from away."
+  (let ((app (irc-app conn)))
+    (de.anvi.croatoan:submit
+      ;; Show away status in all channels where user is present
+      (loop for i from 1 below (length (clatter.core.model:app-buffers app))
+            for buf = (aref (clatter.core.model:app-buffers app) i)
+            when (and buf (gethash nick (clatter.core.model:buffer-members buf)))
+              do (clatter.core.dispatch:deliver-message
+                  app buf
+                  (clatter.core.model:make-message 
+                   :level :system :nick nick
+                   :text (if (and away-msg (> (length away-msg) 0))
+                             (format nil "~a is now away: ~a" nick away-msg)
+                             (format nil "~a is no longer away" nick))))))))
 
 (defun irc-add-members (conn channel names-str)
   "Parse NAMES reply and add members to channel buffer."

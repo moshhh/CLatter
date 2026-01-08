@@ -42,6 +42,7 @@
    #:irc-message #:make-irc-message
    #:irc-message-tags #:irc-message-prefix #:irc-message-command #:irc-message-params
    #:parse-irc-line #:format-irc-line
+   #:parse-irc-tags #:get-server-time #:parse-iso8601-time
    #:parse-prefix #:prefix-nick #:strip-irc-formatting
    #:irc-nick #:irc-user #:irc-pass #:irc-join #:irc-part
    #:irc-privmsg #:irc-notice #:irc-quit #:irc-pong #:irc-ping #:irc-cap

@@ -113,6 +113,39 @@
                       :command command
                       :params (nreverse params))))
 
+(defun parse-irc-tags (tags-string)
+  "Parse IRCv3 tags string into an alist of (key . value) pairs.
+   Tags format: key1=value1;key2=value2;key3"
+  (when tags-string
+    (mapcar (lambda (tag)
+              (let ((eq-pos (position #\= tag)))
+                (if eq-pos
+                    (cons (subseq tag 0 eq-pos)
+                          (subseq tag (1+ eq-pos)))
+                    (cons tag nil))))
+            (uiop:split-string tags-string :separator ";"))))
+
+(defun get-server-time (tags-string)
+  "Extract server-time from IRCv3 tags and convert to universal-time.
+   Format: time=2024-01-08T12:34:56.789Z"
+  (let ((tags (parse-irc-tags tags-string)))
+    (when tags
+      (let ((time-tag (cdr (assoc "time" tags :test #'string=))))
+        (when time-tag
+          (parse-iso8601-time time-tag))))))
+
+(defun parse-iso8601-time (time-string)
+  "Parse ISO8601 timestamp to universal-time. Returns nil on failure."
+  (handler-case
+      (let* ((year (parse-integer (subseq time-string 0 4)))
+             (month (parse-integer (subseq time-string 5 7)))
+             (day (parse-integer (subseq time-string 8 10)))
+             (hour (parse-integer (subseq time-string 11 13)))
+             (minute (parse-integer (subseq time-string 14 16)))
+             (second (parse-integer (subseq time-string 17 19))))
+        (encode-universal-time second minute hour day month year 0))
+    (error () nil)))
+
 (defun format-irc-line (command &rest params)
   "Format an IRC command with params into a protocol line."
   (with-output-to-string (s)
