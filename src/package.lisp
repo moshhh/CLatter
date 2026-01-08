@@ -33,7 +33,7 @@
    #:network-config-name #:network-config-server #:network-config-port
    #:network-config-tls #:network-config-nick #:network-config-username
    #:network-config-realname #:network-config-password #:network-config-nickserv-pw
-   #:network-config-sasl #:network-config-autojoin #:network-config-autoconnect
+   #:network-config-sasl #:network-config-client-cert #:network-config-autojoin #:network-config-autoconnect
    #:config #:make-config #:config-networks #:config-default-network #:config-time-format
    #:load-config #:save-config #:find-network-config #:add-network-config
    #:default-libera-config #:get-network-password #:lookup-authinfo))
@@ -49,7 +49,8 @@
    #:irc-nick #:irc-user #:irc-pass #:irc-join #:irc-part
    #:irc-privmsg #:irc-notice #:irc-quit #:irc-pong #:irc-ping #:irc-cap
    #:irc-whois #:irc-topic #:irc-kick #:irc-mode #:irc-away #:irc-ctcp-reply
-   #:irc-tagmsg #:irc-typing
+   #:irc-tagmsg #:irc-typing #:irc-invite #:irc-names
+   #:irc-monitor-add #:irc-monitor-remove #:irc-monitor-clear #:irc-monitor-list #:irc-monitor-status
    #:+rpl-welcome+ #:+rpl-yourhost+ #:+rpl-created+ #:+rpl-myinfo+ #:+rpl-isupport+
    #:+rpl-namreply+ #:+rpl-endofnames+ #:+rpl-motd+ #:+rpl-motdstart+ #:+rpl-endofmotd+
    #:+rpl-topic+ #:+rpl-topicwhotime+ #:+err-nicknameinuse+

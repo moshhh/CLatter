@@ -15,7 +15,8 @@
    (realname    :initarg :realname :accessor network-config-realname :initform "CLatter User")
    (password    :initarg :password :accessor network-config-password :initform nil)
    (nickserv-pw :initarg :nickserv-pw :accessor network-config-nickserv-pw :initform nil)
-   (sasl        :initarg :sasl :accessor network-config-sasl :initform nil)  ; :plain or nil
+   (sasl        :initarg :sasl :accessor network-config-sasl :initform nil)  ; :plain, :external, or nil
+   (client-cert :initarg :client-cert :accessor network-config-client-cert :initform nil)  ; path to .pem file
    (autojoin    :initarg :autojoin :accessor network-config-autojoin :initform nil)
    (autoconnect :initarg :autoconnect :accessor network-config-autoconnect :initform nil)))
 
@@ -45,6 +46,7 @@
         :password (network-config-password nc)
         :nickserv-pw (network-config-nickserv-pw nc)
         :sasl (network-config-sasl nc)
+        :client-cert (network-config-client-cert nc)
         :autojoin (network-config-autojoin nc)
         :autoconnect (network-config-autoconnect nc)))
 

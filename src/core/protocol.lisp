@@ -229,6 +229,40 @@
       (format-irc-line "AWAY" message)
       (format-irc-line "AWAY")))
 
+(defun irc-invite (nick channel)
+  "Invite NICK to CHANNEL."
+  (format-irc-line "INVITE" nick channel))
+
+(defun irc-names (channel)
+  "Request NAMES list for CHANNEL."
+  (format-irc-line "NAMES" channel))
+
+(defun irc-monitor-add (nicks)
+  "Add NICKS (comma-separated string or list) to monitor list."
+  (let ((nick-str (if (listp nicks)
+                      (format nil "~{~a~^,~}" nicks)
+                      nicks)))
+    (format nil "MONITOR + ~a" nick-str)))
+
+(defun irc-monitor-remove (nicks)
+  "Remove NICKS from monitor list."
+  (let ((nick-str (if (listp nicks)
+                      (format nil "~{~a~^,~}" nicks)
+                      nicks)))
+    (format nil "MONITOR - ~a" nick-str)))
+
+(defun irc-monitor-clear ()
+  "Clear entire monitor list."
+  "MONITOR C")
+
+(defun irc-monitor-list ()
+  "Request current monitor list."
+  "MONITOR L")
+
+(defun irc-monitor-status ()
+  "Request online status of monitored nicks."
+  "MONITOR S")
+
 (defun irc-ctcp-reply (target command &optional text)
   "Format a CTCP reply (sent via NOTICE)."
   (let ((ctcp-text (if text

@@ -353,6 +353,103 @@
                                                :text "Use /history in a channel or query buffer")))))
      t)
     
+    ;; /invite nick [#channel] - invite user to channel
+    ((string= cmd "INVITE")
+     (when (> (length args) 0)
+       (let* ((parts (uiop:split-string (string-trim " " args) :separator " "))
+              (nick (first parts))
+              (buf (clatter.core.model:active-buffer app))
+              (channel (or (second parts)
+                           (when (and buf (eq (clatter.core.model:buffer-kind buf) :channel))
+                             (clatter.core.model:buffer-title buf)))))
+         (if channel
+             (progn
+               (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-invite nick channel))
+               (de.anvi.croatoan:submit
+                 (clatter.core.dispatch:deliver-message
+                  app (or buf (clatter.core.model:current-buffer app))
+                  (clatter.core.model:make-message :level :system :nick "*"
+                                                   :text (format nil "Invited ~a to ~a" nick channel)))))
+             (de.anvi.croatoan:submit
+               (clatter.core.dispatch:deliver-message
+                app (clatter.core.model:current-buffer app)
+                (clatter.core.model:make-message :level :error :nick "*"
+                                                 :text "Usage: /invite nick [#channel]"))))))
+     t)
+    
+    ;; /names [#channel] - refresh member list
+    ((string= cmd "NAMES")
+     (let* ((buf (clatter.core.model:active-buffer app))
+            (channel (if (> (length args) 0)
+                         (string-trim " " args)
+                         (when (and buf (eq (clatter.core.model:buffer-kind buf) :channel))
+                           (clatter.core.model:buffer-title buf)))))
+       (if channel
+           (progn
+             ;; Clear existing members before refresh
+             (let ((target-buf (clatter.core.model:find-buffer-by-title app channel)))
+               (when target-buf
+                 (clrhash (clatter.core.model:buffer-members target-buf))))
+             (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-names channel))
+             (de.anvi.croatoan:submit
+               (clatter.core.dispatch:deliver-message
+                app (or buf (clatter.core.model:current-buffer app))
+                (clatter.core.model:make-message :level :system :nick "*"
+                                                 :text (format nil "Refreshing member list for ~a" channel)))))
+           (de.anvi.croatoan:submit
+             (clatter.core.dispatch:deliver-message
+              app (clatter.core.model:current-buffer app)
+              (clatter.core.model:make-message :level :error :nick "*"
+                                               :text "Usage: /names [#channel]")))))
+     t)
+    
+    ;; /monitor - track users online/offline
+    ((string= cmd "MONITOR")
+     (let* ((trimmed (string-trim " " args))
+            (space-pos (position #\Space trimmed))
+            (subcmd (string-upcase (if space-pos (subseq trimmed 0 space-pos) trimmed)))
+            (rest (if space-pos (string-trim " " (subseq trimmed (1+ space-pos))) "")))
+       (cond
+         ;; /monitor + nick1,nick2 - add nicks to monitor
+         ((string= subcmd "+")
+          (if (> (length rest) 0)
+              (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-monitor-add rest))
+              (de.anvi.croatoan:submit
+                (clatter.core.dispatch:deliver-message
+                 app (clatter.core.model:current-buffer app)
+                 (clatter.core.model:make-message :level :error :nick "*"
+                                                  :text "Usage: /monitor + nick1,nick2,...")))))
+         ;; /monitor - nick1,nick2 - remove nicks from monitor
+         ((string= subcmd "-")
+          (if (> (length rest) 0)
+              (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-monitor-remove rest))
+              (de.anvi.croatoan:submit
+                (clatter.core.dispatch:deliver-message
+                 app (clatter.core.model:current-buffer app)
+                 (clatter.core.model:make-message :level :error :nick "*"
+                                                  :text "Usage: /monitor - nick1,nick2,...")))))
+         ;; /monitor c - clear monitor list
+         ((or (string= subcmd "C") (string= subcmd "CLEAR"))
+          (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-monitor-clear))
+          (de.anvi.croatoan:submit
+            (clatter.core.dispatch:deliver-message
+             app (clatter.core.model:current-buffer app)
+             (clatter.core.model:make-message :level :system :nick "*"
+                                              :text "Monitor list cleared"))))
+         ;; /monitor l or /monitor list - show monitor list
+         ((or (string= subcmd "L") (string= subcmd "LIST") (string= subcmd ""))
+          (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-monitor-list)))
+         ;; /monitor s or /monitor status - check status of monitored nicks
+         ((or (string= subcmd "S") (string= subcmd "STATUS"))
+          (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-monitor-status)))
+         (t
+          (de.anvi.croatoan:submit
+            (clatter.core.dispatch:deliver-message
+             app (clatter.core.model:current-buffer app)
+             (clatter.core.model:make-message :level :error :nick "*"
+                                              :text "Usage: /monitor [+|-|c|l|s] [nicks]"))))))
+     t)
+    
     ;; Unknown command
     (t nil)))
 

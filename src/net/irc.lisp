@@ -59,7 +59,8 @@
   (let* ((cfg (irc-network-config conn))
          (server (clatter.core.config:network-config-server cfg))
          (port (clatter.core.config:network-config-port cfg))
-         (use-tls (clatter.core.config:network-config-tls cfg)))
+         (use-tls (clatter.core.config:network-config-tls cfg))
+         (client-cert (clatter.core.config:network-config-client-cert cfg)))
     (setf (irc-state conn) :connecting)
     (handler-case
         (let ((sock (usocket:socket-connect server port :element-type '(unsigned-byte 8))))
@@ -67,10 +68,19 @@
           (let ((raw-stream (usocket:socket-stream sock)))
             (setf (irc-stream conn)
                   (if use-tls
-                      (cl+ssl:make-ssl-client-stream
-                       raw-stream
-                       :hostname server
-                       :external-format :utf-8)
+                      (if (and client-cert (probe-file client-cert))
+                          ;; TLS with client certificate for SASL EXTERNAL
+                          (cl+ssl:make-ssl-client-stream
+                           raw-stream
+                           :hostname server
+                           :certificate client-cert
+                           :key client-cert
+                           :external-format :utf-8)
+                          ;; TLS without client certificate
+                          (cl+ssl:make-ssl-client-stream
+                           raw-stream
+                           :hostname server
+                           :external-format :utf-8))
                       (flexi-streams:make-flexi-stream
                        raw-stream
                        :external-format :utf-8))))
@@ -159,11 +169,19 @@
            (and is-multiline (string-equal (third params) "LS")))
        (let* ((available (parse-cap-list caps-string))
               (cfg (irc-network-config conn))
-              (want-sasl (and (clatter.core.config:network-config-sasl cfg)
-                              (clatter.core.config:get-network-password cfg)))
+              (sasl-type (clatter.core.config:network-config-sasl cfg))
+              (client-cert (clatter.core.config:network-config-client-cert cfg))
+              ;; Want SASL EXTERNAL if configured and have cert
+              (want-sasl-external (and (eq sasl-type :external)
+                                       client-cert
+                                       (probe-file client-cert)))
+              ;; Want SASL PLAIN if configured and have password
+              (want-sasl-plain (and (eq sasl-type :plain)
+                                    (clatter.core.config:get-network-password cfg)))
               (caps-to-request (find-matching-caps available *wanted-caps*)))
          ;; Add sasl if we want it and it's available
-         (when (and want-sasl (member "sasl" available :test #'string-equal))
+         (when (and (or want-sasl-external want-sasl-plain)
+                    (member "sasl" available :test #'string-equal))
            (push "sasl" caps-to-request)
            (setf (irc-sasl-state conn) :requested))
          (if caps-to-request
@@ -177,14 +195,27 @@
       
       ;; CAP ACK - capabilities accepted
       ((string-equal subcommand "ACK")
-       (let ((acked (parse-cap-list caps-string)))
+       (let* ((acked (parse-cap-list caps-string))
+              (cfg (irc-network-config conn))
+              (sasl-type (clatter.core.config:network-config-sasl cfg)))
          (setf (irc-cap-enabled conn) (append (irc-cap-enabled conn) acked))
          (irc-log-system conn "Enabled capabilities: ~{~a~^, ~}" acked)
          ;; If SASL was acked, start authentication
          (if (member "sasl" acked :test #'string-equal)
-             (progn
-               (irc-send conn "AUTHENTICATE PLAIN")
-               (irc-send-registration conn))
+             (cond
+               ;; SASL EXTERNAL - certificate-based auth
+               ((eq sasl-type :external)
+                (irc-log-system conn "Starting SASL EXTERNAL authentication")
+                (irc-send conn "AUTHENTICATE EXTERNAL")
+                (irc-send-registration conn))
+               ;; SASL PLAIN - password-based auth
+               ((eq sasl-type :plain)
+                (irc-send conn "AUTHENTICATE PLAIN")
+                (irc-send-registration conn))
+               ;; Fallback
+               (t
+                (irc-send conn "CAP END")
+                (irc-send-registration conn)))
              (progn
                (irc-send conn "CAP END")
                (irc-send-registration conn)))))
@@ -244,7 +275,13 @@
       ;; AUTHENTICATE response
       ((string= command "AUTHENTICATE")
        (when (string= (first params) "+")
-         (irc-sasl-authenticate conn)))
+         (let* ((cfg (irc-network-config conn))
+                (sasl-type (clatter.core.config:network-config-sasl cfg)))
+           (if (eq sasl-type :external)
+               ;; SASL EXTERNAL - just send "+" (empty response, cert already presented)
+               (irc-send conn "AUTHENTICATE +")
+               ;; SASL PLAIN - send credentials
+               (irc-sasl-authenticate conn)))))
       
       ;; 903 RPL_SASLSUCCESS
       ((string= command "903")
@@ -363,6 +400,32 @@
       ;; 366 RPL_ENDOFNAMES - end of names list (ignore)
       ((string= command "366")
        nil)
+      
+      ;; 730 RPL_MONONLINE - monitored user is online
+      ((string= command "730")
+       (let ((nicks (second params)))
+         (when nicks
+           (irc-log-system conn "Online: ~a" nicks))))
+      
+      ;; 731 RPL_MONOFFLINE - monitored user is offline
+      ((string= command "731")
+       (let ((nicks (second params)))
+         (when nicks
+           (irc-log-system conn "Offline: ~a" nicks))))
+      
+      ;; 732 RPL_MONLIST - list of monitored nicks
+      ((string= command "732")
+       (let ((nicks (second params)))
+         (when nicks
+           (irc-log-system conn "Monitoring: ~a" nicks))))
+      
+      ;; 733 RPL_ENDOFMONLIST - end of monitor list
+      ((string= command "733")
+       nil)
+      
+      ;; 734 ERR_MONLISTFULL - monitor list is full
+      ((string= command "734")
+       (irc-log-error conn "Monitor list full (limit: ~a)" (second params)))
       
       ;; TAGMSG - handle typing indicators and other client tags
       ((string= command "TAGMSG")

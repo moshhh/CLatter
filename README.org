@@ -104,11 +104,42 @@ Example:
 
 *** SASL Authentication
 
-SASL authenticates you *before* your connection is visible, so your IP/hostname is cloaked from the start. To enable SASL:
+SASL authenticates you *before* your connection is visible, so your IP/hostname is cloaked from the start.
+
+**** SASL PLAIN (password-based)
 
 1. You must have a registered nick with NickServ
 2. Add =:sasl :plain= to your network config
 3. Ensure =:nickserv-pw= contains your NickServ password (or use =:authinfo=)
+
+**** SASL EXTERNAL (certificate-based) - UNTESTED
+
+More secure - uses a client certificate instead of a password.
+
+1. Generate a certificate:
+   #+begin_src bash
+   openssl req -x509 -new -newkey rsa:4096 -sha256 -days 3650 -nodes \
+     -keyout ~/.config/clatter/clatter.key -out ~/.config/clatter/clatter.crt \
+     -subj "/CN=YourNick"
+   cat ~/.config/clatter/clatter.crt ~/.config/clatter/clatter.key > ~/.config/clatter/clatter.pem
+   #+end_src
+
+2. Register the certificate with NickServ (connect with password first):
+   #+begin_example
+   /msg NickServ CERT ADD
+   #+end_example
+
+3. Update your config:
+   #+begin_src lisp
+   (:name "libera"
+    :server "irc.libera.chat"
+    :nick "yournick"
+    :sasl :external
+    :client-cert "/home/you/.config/clatter/clatter.pem"
+    ...)
+   #+end_src
+
+4. You can now remove =:nickserv-pw= - the certificate handles authentication
 
 *** Authinfo Password Storage
 
@@ -170,6 +201,13 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | ~/away [message]~            | Set away status (no message = back)      |
 | ~/back~                      | Clear away status                        |
 | ~/history [count]~           | Request chat history (if server supports)|
+| ~/invite nick [#channel]~    | Invite user to channel                   |
+| ~/names [#channel]~          | Refresh channel member list              |
+| ~/monitor + nick1,nick2~     | Add nicks to monitor list                |
+| ~/monitor - nick1,nick2~     | Remove nicks from monitor list           |
+| ~/monitor l~                 | List monitored nicks                     |
+| ~/monitor s~                 | Check status of monitored nicks          |
+| ~/monitor c~                 | Clear monitor list                       |
 | ~/raw line~                  | Send raw IRC command                     |
 | ~/help~                      | Show help                                |
 
