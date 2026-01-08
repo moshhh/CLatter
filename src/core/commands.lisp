@@ -284,6 +284,46 @@
      (handle-crafterbin-command app args)
      t)
     
+    ;; /ignore [nick] - add/remove/list ignored nicks
+    ((string= cmd "IGNORE")
+     (handle-ignore-command app args)
+     t)
+    
+    ;; /unignore nick - remove nick from ignore list
+    ((string= cmd "UNIGNORE")
+     (when (> (length args) 0)
+       (let ((nick (string-trim " " args)))
+         (clatter.core.model:unignore-nick app nick)
+         (de.anvi.croatoan:submit
+           (clatter.core.dispatch:deliver-message
+            app (clatter.core.model:current-buffer app)
+            (clatter.core.model:make-message :level :system :nick "*"
+                                             :text (format nil "Unignored: ~a" nick))))))
+     t)
+    
+    ;; /away [message] - set or clear away status
+    ((string= cmd "AWAY")
+     (let ((msg (if (> (length args) 0) (string-trim " " args) nil)))
+       (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-away msg))
+       (de.anvi.croatoan:submit
+         (clatter.core.dispatch:deliver-message
+          app (clatter.core.model:current-buffer app)
+          (clatter.core.model:make-message :level :system :nick "*"
+                                           :text (if msg
+                                                     (format nil "You are now away: ~a" msg)
+                                                     "You are no longer away")))))
+     t)
+    
+    ;; /back - clear away status (alias for /away with no args)
+    ((string= cmd "BACK")
+     (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-away nil))
+     (de.anvi.croatoan:submit
+       (clatter.core.dispatch:deliver-message
+        app (clatter.core.model:current-buffer app)
+        (clatter.core.model:make-message :level :system :nick "*"
+                                         :text "You are no longer away")))
+     t)
+    
     ;; Unknown command
     (t nil)))
 
@@ -403,6 +443,40 @@
           app buf
           (clatter.core.model:make-message :level :error :nick "*"
                                            :text "Use /log in a channel or query buffer, or /log list")))))))
+
+(defun handle-ignore-command (app args)
+  "Handle /ignore command.
+   /ignore - list ignored nicks
+   /ignore nick - toggle ignore for nick"
+  (let ((buf (clatter.core.model:current-buffer app)))
+    (if (or (null args) (= (length (string-trim " " args)) 0))
+        ;; List ignored nicks
+        (let ((ignored (clatter.core.model:list-ignored app)))
+          (de.anvi.croatoan:submit
+            (clatter.core.dispatch:deliver-message
+             app buf
+             (clatter.core.model:make-message 
+              :level :system :nick "*"
+              :text (if ignored
+                        (format nil "Ignored: ~{~a~^, ~}" ignored)
+                        "No nicks ignored")))))
+        ;; Toggle ignore for nick
+        (let ((nick (string-trim " " args)))
+          (if (clatter.core.model:ignored-p app nick)
+              (progn
+                (clatter.core.model:unignore-nick app nick)
+                (de.anvi.croatoan:submit
+                  (clatter.core.dispatch:deliver-message
+                   app buf
+                   (clatter.core.model:make-message :level :system :nick "*"
+                                                    :text (format nil "Unignored: ~a" nick)))))
+              (progn
+                (clatter.core.model:ignore-nick app nick)
+                (de.anvi.croatoan:submit
+                  (clatter.core.dispatch:deliver-message
+                   app buf
+                   (clatter.core.model:make-message :level :system :nick "*"
+                                                    :text (format nil "Ignored: ~a" nick))))))))))
 
 (defun add-to-autojoin (app channel)
   "Add a channel to the autojoin list and save config."

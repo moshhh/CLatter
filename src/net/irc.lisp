@@ -422,20 +422,22 @@
   "Deliver a PRIVMSG to the appropriate buffer.
    SERVER-TIME is optional IRCv3 server-time (universal-time format)."
   (let ((app (irc-app conn)))
-    (de.anvi.croatoan:submit
-      ;; For channels, target is the channel name
-      ;; For PMs, target is our nick - use sender-nick for buffer instead
-      (let* ((buffer-target (if (and (> (length target) 0)
-                                     (char= (char target 0) #\#))
-                                target
-                                sender-nick))
-             (buf (irc-find-or-create-buffer conn buffer-target))
-             (highlight (search (irc-nick conn) text :test #'char-equal))
-             (ts (or server-time (get-universal-time))))
-        (clatter.core.dispatch:deliver-message
-         app buf
-         (clatter.core.model:make-message :level :chat :nick sender-nick :text text :ts ts)
-         :highlightp highlight)))))
+    ;; Check if sender is ignored
+    (unless (clatter.core.model:ignored-p app sender-nick)
+      (de.anvi.croatoan:submit
+        ;; For channels, target is the channel name
+        ;; For PMs, target is our nick - use sender-nick for buffer instead
+        (let* ((buffer-target (if (and (> (length target) 0)
+                                       (char= (char target 0) #\#))
+                                  target
+                                  sender-nick))
+               (buf (irc-find-or-create-buffer conn buffer-target))
+               (highlight (search (irc-nick conn) text :test #'char-equal))
+               (ts (or server-time (get-universal-time))))
+          (clatter.core.dispatch:deliver-message
+           app buf
+           (clatter.core.model:make-message :level :chat :nick sender-nick :text text :ts ts)
+           :highlightp highlight))))))
 
 (defun irc-deliver-notice (conn target sender-nick text)
   "Deliver a NOTICE to the appropriate buffer. CTCP replies go to server buffer."

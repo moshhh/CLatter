@@ -223,6 +223,12 @@
       (apply #'format-irc-line "MODE" target mode args)
       (format-irc-line "MODE" target)))
 
+(defun irc-away (&optional message)
+  "Set or clear away status. If MESSAGE is nil or empty, clears away."
+  (if (and message (> (length message) 0))
+      (format-irc-line "AWAY" message)
+      (format-irc-line "AWAY")))
+
 (defun irc-ctcp-reply (target command &optional text)
   "Format a CTCP reply (sent via NOTICE)."
   (let ((ctcp-text (if text

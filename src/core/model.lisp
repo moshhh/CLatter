@@ -54,7 +54,8 @@
    (buffers           :initform (make-array 0 :adjustable t :fill-pointer 0) :accessor app-buffers)
    (current-buffer-id :initform 0 :accessor app-current-buffer-id)
    (dirty-flags       :initform (list :layout :chat :buflist :status :input) :accessor app-dirty-flags)
-   (quit-requested    :initform nil :accessor app-quit-requested)))
+   (quit-requested    :initform nil :accessor app-quit-requested)
+   (ignore-list       :initform (make-hash-table :test 'equalp) :accessor app-ignore-list)))
 
 (defun make-app ()
   (let ((a (make-instance 'app)))
@@ -124,3 +125,22 @@
   (loop for buf across (app-buffers app)
         when (and buf (string-equal (buffer-title buf) title))
         return buf))
+
+(defun ignore-nick (app nick)
+  "Add a nick to the ignore list."
+  (setf (gethash nick (app-ignore-list app)) t))
+
+(defun unignore-nick (app nick)
+  "Remove a nick from the ignore list."
+  (remhash nick (app-ignore-list app)))
+
+(defun ignored-p (app nick)
+  "Check if a nick is ignored."
+  (gethash nick (app-ignore-list app)))
+
+(defun list-ignored (app)
+  "Return a list of all ignored nicks."
+  (let ((nicks nil))
+    (maphash (lambda (k v) (declare (ignore v)) (push k nicks))
+             (app-ignore-list app))
+    (sort nicks #'string-lessp)))

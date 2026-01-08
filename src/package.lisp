@@ -21,7 +21,8 @@
    #:ui-term-w #:ui-term-h #:ui-buflist-w
    #:input-state #:make-input-state #:input-text #:input-cursor #:input-history #:input-history-pos
    #:find-buffer #:current-buffer #:active-buffer
-   #:remove-buffer #:find-buffer-by-title))
+   #:remove-buffer #:find-buffer-by-title
+   #:app-ignore-list #:ignore-nick #:unignore-nick #:ignored-p #:list-ignored))
 
 (defpackage #:clatter.core.config
   (:use #:cl)
@@ -46,7 +47,7 @@
    #:parse-prefix #:prefix-nick #:strip-irc-formatting
    #:irc-nick #:irc-user #:irc-pass #:irc-join #:irc-part
    #:irc-privmsg #:irc-notice #:irc-quit #:irc-pong #:irc-ping #:irc-cap
-   #:irc-whois #:irc-topic #:irc-kick #:irc-mode #:irc-ctcp-reply
+   #:irc-whois #:irc-topic #:irc-kick #:irc-mode #:irc-away #:irc-ctcp-reply
    #:+rpl-welcome+ #:+rpl-yourhost+ #:+rpl-created+ #:+rpl-myinfo+ #:+rpl-isupport+
    #:+rpl-namreply+ #:+rpl-endofnames+ #:+rpl-motd+ #:+rpl-motdstart+ #:+rpl-endofmotd+
    #:+rpl-topic+ #:+rpl-topicwhotime+ #:+err-nicknameinuse+
