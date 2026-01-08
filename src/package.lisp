@@ -152,6 +152,7 @@
    #:irc-check-health
    #:irc-cap-enabled
    #:irc-send-typing
+   #:irc-request-chathistory
    #:irc-app
    #:start-irc-connection))
 

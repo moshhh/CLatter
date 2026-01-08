@@ -324,6 +324,35 @@
                                          :text "You are no longer away")))
      t)
     
+    ;; /history [count] - request chat history from server (if supported)
+    ((string= cmd "HISTORY")
+     (let* ((buf (clatter.core.model:active-buffer app))
+            (target (when buf (clatter.core.model:buffer-title buf)))
+            (count (if (> (length args) 0)
+                       (parse-integer (string-trim " " args) :junk-allowed t)
+                       50)))
+       (if (and target (not (eq (clatter.core.model:buffer-kind buf) :server)))
+           (if (or (member "chathistory" (clatter.net.irc:irc-cap-enabled conn) :test #'string-equal)
+                   (member "draft/chathistory" (clatter.net.irc:irc-cap-enabled conn) :test #'string-equal))
+               (progn
+                 (clatter.net.irc:irc-request-chathistory conn target :limit (or count 50))
+                 (de.anvi.croatoan:submit
+                   (clatter.core.dispatch:deliver-message
+                    app buf
+                    (clatter.core.model:make-message :level :system :nick "*"
+                                                     :text (format nil "Requesting ~d messages of history..." (or count 50))))))
+               (de.anvi.croatoan:submit
+                 (clatter.core.dispatch:deliver-message
+                  app buf
+                  (clatter.core.model:make-message :level :error :nick "*"
+                                                   :text "Server does not support chathistory"))))
+           (de.anvi.croatoan:submit
+             (clatter.core.dispatch:deliver-message
+              app (clatter.core.model:current-buffer app)
+              (clatter.core.model:make-message :level :error :nick "*"
+                                               :text "Use /history in a channel or query buffer")))))
+     t)
+    
     ;; Unknown command
     (t nil)))
 

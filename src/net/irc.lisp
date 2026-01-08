@@ -17,6 +17,8 @@
    (cap-negotiating :initform nil :accessor irc-cap-negotiating)
    ;; IRCv3 capabilities - track what's enabled
    (cap-enabled    :initform nil :accessor irc-cap-enabled)  ; list of enabled caps
+   ;; IRCv3 batch tracking - hash of batch-id -> (type target messages)
+   (active-batches :initform (make-hash-table :test 'equal) :accessor irc-active-batches)
    ;; Reconnection state
    (reconnect-enabled :initform t :accessor irc-reconnect-enabled)
    (reconnect-attempts :initform 0 :accessor irc-reconnect-attempts)
@@ -28,7 +30,8 @@
 ;; IRCv3 capabilities we want to request
 ;; Note: typing indicator names vary by server - try both draft/typing and typing
 (defparameter *wanted-caps* '("server-time" "away-notify" "multi-prefix" "account-notify" 
-                               "message-tags" "draft/typing" "typing")
+                               "message-tags" "draft/typing" "typing"
+                               "batch" "draft/chathistory" "chathistory")
   "List of IRCv3 capabilities to request from the server.")
 
 (defun make-irc-connection (app network-id network-config)
@@ -280,13 +283,21 @@
               (text (clatter.core.protocol:strip-irc-formatting raw-text))
               (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
               (sender-nick (clatter.core.protocol:prefix-nick parsed-prefix))
-              (server-time (clatter.core.protocol:get-server-time tags)))
+              (server-time (clatter.core.protocol:get-server-time tags))
+              (parsed-tags (clatter.core.protocol:parse-irc-tags tags))
+              (batch-id (cdr (assoc "batch" parsed-tags :test #'string=))))
          ;; Check for CTCP (starts and ends with \x01)
-         (if (and (> (length raw-text) 1)
-                  (char= (char raw-text 0) (code-char 1))
-                  (char= (char raw-text (1- (length raw-text))) (code-char 1)))
-             (irc-handle-ctcp conn sender-nick target raw-text)
-             (irc-deliver-chat conn target sender-nick text server-time))))
+         (cond
+           ((and (> (length raw-text) 1)
+                 (char= (char raw-text 0) (code-char 1))
+                 (char= (char raw-text (1- (length raw-text))) (code-char 1)))
+            (irc-handle-ctcp conn sender-nick target raw-text))
+           ;; If part of a batch, accumulate instead of delivering
+           (batch-id
+            (irc-accumulate-batch-message conn batch-id sender-nick text server-time))
+           ;; Normal message
+           (t
+            (irc-deliver-chat conn target sender-nick text server-time)))))
       
       ;; NOTICE
       ((string= command "NOTICE")
@@ -356,6 +367,10 @@
               (typing-state (cdr (assoc "+typing" parsed-tags :test #'string=))))
          (when typing-state
            (irc-handle-typing conn nick target typing-state))))
+      
+      ;; BATCH - start or end a batch of related messages
+      ((string= command "BATCH")
+       (irc-handle-batch conn tags params))
       
       ;; Other numerics - log to server buffer
       ((every #'digit-char-p command)
@@ -553,6 +568,58 @@
    STATE should be :active, :paused, or :done."
   (when (member "message-tags" (irc-cap-enabled conn) :test #'string-equal)
     (irc-send conn (clatter.core.protocol:irc-typing target state))))
+
+(defun irc-accumulate-batch-message (conn batch-id sender-nick text server-time)
+  "Accumulate a message into an active batch."
+  (let ((batch (gethash batch-id (irc-active-batches conn))))
+    (when batch
+      (let ((msg (clatter.core.model:make-message 
+                  :level :chat :nick sender-nick :text text 
+                  :ts (or server-time (get-universal-time)))))
+        (push msg (getf batch :messages))))))
+
+(defun irc-handle-batch (conn tags params)
+  "Handle BATCH command - start or end a batch of messages.
+   +ref starts a batch, -ref ends it."
+  (let* ((ref (first params))
+         (starting (and (> (length ref) 0) (char= (char ref 0) #\+)))
+         (batch-id (subseq ref 1)))
+    (if starting
+        ;; Start new batch
+        (let ((batch-type (second params))
+              (batch-target (third params)))
+          (setf (gethash batch-id (irc-active-batches conn))
+                (list :type batch-type :target batch-target :messages nil)))
+        ;; End batch - process accumulated messages
+        (let ((batch (gethash batch-id (irc-active-batches conn))))
+          (when batch
+            (let ((batch-type (getf batch :type))
+                  (messages (nreverse (getf batch :messages))))
+              ;; Handle chathistory batches
+              (when (string-equal batch-type "chathistory")
+                (irc-deliver-chathistory conn batch messages))
+              (remhash batch-id (irc-active-batches conn))))))))
+
+(defun irc-deliver-chathistory (conn batch messages)
+  "Deliver chathistory batch messages to the appropriate buffer."
+  (let* ((app (irc-app conn))
+         (target (getf batch :target)))
+    (de.anvi.croatoan:submit
+      (let ((buf (irc-find-or-create-buffer conn target)))
+        (when buf
+          (dolist (msg messages)
+            (clatter.core.dispatch:deliver-message app buf msg :no-notify t)))))))
+
+(defun irc-request-chathistory (conn target &key (limit 50) before after)
+  "Request chat history for TARGET from server.
+   LIMIT is max messages, BEFORE/AFTER are timestamps or msgids."
+  (when (or (member "chathistory" (irc-cap-enabled conn) :test #'string-equal)
+            (member "draft/chathistory" (irc-cap-enabled conn) :test #'string-equal))
+    (let ((cmd (cond
+                 (before (format nil "CHATHISTORY BEFORE ~a timestamp=~a ~d" target before limit))
+                 (after (format nil "CHATHISTORY AFTER ~a timestamp=~a ~d" target after limit))
+                 (t (format nil "CHATHISTORY LATEST ~a * ~d" target limit)))))
+      (irc-send conn cmd))))
 
 (defun irc-add-members (conn channel names-str)
   "Parse NAMES reply and add members to channel buffer."
