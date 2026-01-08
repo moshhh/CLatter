@@ -19,6 +19,9 @@
    (cap-enabled    :initform nil :accessor irc-cap-enabled)  ; list of enabled caps
    ;; IRCv3 batch tracking - hash of batch-id -> (type target messages)
    (active-batches :initform (make-hash-table :test 'equal) :accessor irc-active-batches)
+   ;; IRCv3 labeled-response tracking - hash of label -> callback function
+   (pending-labels :initform (make-hash-table :test 'equal) :accessor irc-pending-labels)
+   (label-counter  :initform 0 :accessor irc-label-counter)
    ;; Reconnection state
    (reconnect-enabled :initform t :accessor irc-reconnect-enabled)
    (reconnect-attempts :initform 0 :accessor irc-reconnect-attempts)
@@ -31,7 +34,8 @@
 ;; Note: typing indicator names vary by server - try both draft/typing and typing
 (defparameter *wanted-caps* '("server-time" "away-notify" "multi-prefix" "account-notify" 
                                "message-tags" "draft/typing" "typing"
-                               "batch" "draft/chathistory" "chathistory")
+                               "batch" "draft/chathistory" "chathistory"
+                               "labeled-response")
   "List of IRCv3 capabilities to request from the server.")
 
 (defun make-irc-connection (app network-id network-config)
@@ -95,18 +99,13 @@
   (cl-base64:string-to-base64-string string))
 
 (defun irc-register (conn)
-  "Send registration commands, with SASL if configured."
+  "Send registration commands, always negotiating IRCv3 capabilities."
   (let* ((cfg (irc-network-config conn))
-         (nick (clatter.core.config:network-config-nick cfg))
-         (sasl (clatter.core.config:network-config-sasl cfg)))
+         (nick (clatter.core.config:network-config-nick cfg)))
     (setf (irc-nick conn) nick)
-    (if (and sasl (clatter.core.config:get-network-password cfg))
-        ;; Start CAP negotiation for SASL
-        (progn
-          (setf (irc-cap-negotiating conn) t)
-          (irc-send conn "CAP LS 302"))
-        ;; No SASL - normal registration
-        (irc-send-registration conn))))
+    ;; Always start CAP negotiation for IRCv3 capabilities
+    (setf (irc-cap-negotiating conn) t)
+    (irc-send conn "CAP LS 302")))
 
 (defun irc-send-registration (conn)
   "Send NICK and USER commands."
@@ -222,6 +221,11 @@
         (params (clatter.core.protocol:irc-message-params msg))
         (prefix (clatter.core.protocol:irc-message-prefix msg))
         (tags (clatter.core.protocol:irc-message-tags msg)))
+    ;; Check for labeled-response
+    (let* ((parsed-tags (clatter.core.protocol:parse-irc-tags tags))
+           (label (cdr (assoc "label" parsed-tags :test #'string=))))
+      (when label
+        (irc-handle-labeled-response conn label msg)))
     (cond
       ;; PING -> PONG
       ((string= command "PING")
@@ -620,6 +624,32 @@
                  (after (format nil "CHATHISTORY AFTER ~a timestamp=~a ~d" target after limit))
                  (t (format nil "CHATHISTORY LATEST ~a * ~d" target limit)))))
       (irc-send conn cmd))))
+
+(defun irc-generate-label (conn)
+  "Generate a unique label for labeled-response."
+  (format nil "clatter~d" (incf (irc-label-counter conn))))
+
+(defun irc-send-labeled (conn command &optional callback)
+  "Send a command with a label tag for labeled-response.
+   CALLBACK will be called with the response when received.
+   Returns the label used."
+  (if (member "labeled-response" (irc-cap-enabled conn) :test #'string-equal)
+      (let ((label (irc-generate-label conn)))
+        (when callback
+          (setf (gethash label (irc-pending-labels conn)) callback))
+        (irc-send conn (format nil "@label=~a ~a" label command))
+        label)
+      ;; Fallback: just send without label
+      (progn
+        (irc-send conn command)
+        nil)))
+
+(defun irc-handle-labeled-response (conn label response-data)
+  "Handle a labeled response by calling the registered callback."
+  (let ((callback (gethash label (irc-pending-labels conn))))
+    (when callback
+      (funcall callback response-data)
+      (remhash label (irc-pending-labels conn)))))
 
 (defun irc-add-members (conn channel names-str)
   "Parse NAMES reply and add members to channel buffer."

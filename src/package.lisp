@@ -153,6 +153,7 @@
    #:irc-cap-enabled
    #:irc-send-typing
    #:irc-request-chathistory
+   #:irc-send-labeled
    #:irc-app
    #:start-irc-connection))
 

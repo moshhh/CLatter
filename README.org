@@ -27,7 +27,7 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 - *Message Logging* - Automatic logging to =~/.local/share/clatter/logs/=
 - *Log Search* - Search through message history with ~/log search~
 - *CrafterBin Integration* - Upload files to pastebin with ~/crafterbin~
-- *IRCv3 Capabilities* - server-time, away-notify, multi-prefix, account-notify
+- *IRCv3 Capabilities* - server-time, away-notify, multi-prefix, account-notify, typing, batch, chathistory, labeled-response
 - *Ignore List* - Hide messages from specific users with ~/ignore~
 - *Away Status* - Set away status with ~/away~
 
@@ -169,6 +169,7 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 | ~/unignore nick~             | Remove nick from ignore list             |
 | ~/away [message]~            | Set away status (no message = back)      |
 | ~/back~                      | Clear away status                        |
+| ~/history [count]~           | Request chat history (if server supports)|
 | ~/raw line~                  | Send raw IRC command                     |
 | ~/help~                      | Show help                                |
 
