@@ -70,6 +70,18 @@
 - [X] DCC connection management (/dcc list, accept, reject, close)
 - [X] Automatic download directory (~/Downloads/CLatter/)
 
+*** v0.6 - IRCv3 & UI Improvements
+- [X] IRCv3 MONITOR support (track users online/offline)
+- [X] SASL EXTERNAL authentication (certificate-based) - untested
+- [X] Channel modes display in status bar
+- [X] User modes display (@/+) in status bar
+- [X] /list command (list channels on server)
+- [X] /who command (query user info)
+- [X] /invite command
+- [X] /names command (refresh member list)
+- [X] ASCII symbols for cross-platform compatibility (macOS fix)
+- [X] Split-pane status bar shows active pane's info
+
 ** Known Issues
 
 - [ ] Terminal resize not auto-detected - use Ctrl-L to refresh after resizing
@@ -83,10 +95,10 @@
 - [ ] Mouse support for buffer switching
 - [X] Split-pane view for multiple channels
 - [X] DCC file transfer support
-- [X] IRCv3 capabilities (SASL PLAIN authentication)
+- [X] IRCv3 capabilities (SASL, MONITOR, away-notify, typing, chathistory, etc.)
 - [ ] Matrix bridge support
 - [ ] Spell checking integration
-- [ ] Channel modes display
+- [X] Channel modes display
 - [ ] User list panel (toggleable)
 - [ ] URL detection and highlighting
 - [ ] Desktop notifications (libnotify)

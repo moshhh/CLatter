@@ -1,4 +1,45 @@
 (in-package #:clatter)
 
+(defparameter *version* "0.6.0")
+
+(defun print-help ()
+  (format t "CLatter - A Common Lisp IRC Client~%~%")
+  (format t "Usage: clatter [options]~%~%")
+  (format t "Options:~%")
+  (format t "  -h, help       Show this help message~%")
+  (format t "  -v, version    Show version information~%")
+  (format t "~%")
+  (format t "Basic Commands:~%")
+  (format t "  /join #channel   Join a channel~%")
+  (format t "  /part            Leave current channel~%")
+  (format t "  /msg nick text   Send private message~%")
+  (format t "  /quit            Disconnect and exit~%")
+  (format t "  /help            Show all commands~%")
+  (format t "~%")
+  (format t "Navigation:~%")
+  (format t "  Ctrl-P/N         Previous/Next buffer~%")
+  (format t "  Ctrl-U/D         Scroll chat history~%")
+  (format t "  Ctrl-W           Toggle split-pane view~%")
+  (format t "  Tab              Nick completion~%")
+  (format t "  F10              Quit~%")
+  (format t "~%Configuration: ~~/.config/clatter/config.lisp~%")
+  (format t "Logs:          ~~/.local/share/clatter/logs/~%"))
+
+(defun print-version ()
+  (format t "CLatter ~a~%" *version*))
+
 (defun main ()
-  (clatter.app:start))
+  (let ((args (uiop:command-line-arguments)))
+    (cond
+      ;; Note: --help and --version are intercepted by SBCL runtime
+      ;; Use -h/-v or "clatter -- --help" to reach our handlers
+      ((member "-h" args :test #'string=)
+       (print-help))
+      ((member "-v" args :test #'string=)
+       (print-version))
+      ((member "help" args :test #'string=)
+       (print-help))
+      ((member "version" args :test #'string=)
+       (print-version))
+      (t
+       (clatter.app:start)))))

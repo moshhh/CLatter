@@ -13,8 +13,8 @@
    #:app #:make-app #:app-ui #:app-buffers #:app-current-buffer-id #:app-dirty-flags #:app-quit-requested
    #:mark-dirty #:dirty-p #:clear-dirty
    #:buffer #:make-buffer #:buffer-id #:buffer-title #:buffer-kind #:buffer-scrollback
-   #:buffer-unread-count #:buffer-highlight-count #:buffer-scroll-offset #:buffer-members
-   #:buffer-typing-users #:get-typing-nicks
+   #:buffer-unread-count #:buffer-highlight-count #:buffer-scroll-offset #:buffer-members #:buffer-typing-users #:get-typing-nicks
+   #:buffer-channel-modes #:buffer-my-modes
    #:ui-win-chat2 #:ui-split-mode #:ui-split-buffer-id #:ui-active-pane
    #:message #:make-message #:message-ts #:message-level #:message-nick #:message-text #:message-highlight
    #:ui-state #:make-ui-state #:ui-input #:ui-screen
@@ -102,7 +102,8 @@
   (:use #:cl)
   (:import-from #:clatter.core.model
                 #:app #:app-ui #:app-buffers #:app-current-buffer-id
-                #:buffer #:buffer-title #:buffer-unread-count #:buffer-highlight-count
+                #:buffer #:buffer-title #:buffer-kind #:buffer-unread-count #:buffer-highlight-count
+                #:buffer-channel-modes #:buffer-my-modes
                 #:current-buffer #:buffer-scrollback #:buffer-scroll-offset
                 #:input-text #:input-cursor
                 #:dirty-p #:clear-dirty

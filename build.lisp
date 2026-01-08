@@ -18,7 +18,9 @@
 (ql:quickload :clatter)
 
 ;; Build the executable
+;; :save-runtime-options nil prevents SBCL from processing --help/--version
 (sb-ext:save-lisp-and-die "clatter"
                           :toplevel #'clatter:main
                           :executable t
-                          :compression t)
+                          :compression t
+                          :save-runtime-options nil)

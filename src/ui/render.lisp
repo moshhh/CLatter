@@ -227,7 +227,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
       (loop for i from 0 below (length (app-buffers app))
             for buf = (aref (app-buffers app) i)
             when (and buf (< row content-h))
-            do (let* ((marker (if (= i (app-current-buffer-id app)) "▶" " "))
+            do (let* ((marker (if (= i (app-current-buffer-id app)) ">" " "))
                       (unread (buffer-unread-count buf))
                       (hi (buffer-highlight-count buf))
                       (line (format nil "~a~a~@[ (~d)~]~@[ !~d~]"
@@ -244,7 +244,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
         ;; In split mode, show buffer name in border with active indicator
         (when (ui-split-mode ui)
           (let ((left-title (format nil " ~a~a "
-                                    (if (eq active-pane :left) "» " "")
+                                    (if (eq active-pane :left) ">> " "")
                                     (buffer-title left-buf))))
             (%clear-and-border wchat left-title))
           (render-chat-pane wchat left-buf))
@@ -260,31 +260,46 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
             (let ((right-buf (aref (app-buffers app) split-buf-id)))
               (when right-buf  ;; Guard against nil buffer
                 (let ((right-title (format nil " ~a~a "
-                                           (if (eq active-pane :right) "» " "")
+                                           (if (eq active-pane :right) ">> " "")
                                            (buffer-title right-buf))))
                   (%clear-and-border wchat2 right-title)
                   (render-chat-pane wchat2 right-buf))))))))
 
-    ;; status
-    (let* ((buf (current-buffer app))
-           (unread (if buf (buffer-unread-count buf) 0))
-           (highlights (if buf (buffer-highlight-count buf) 0))
-           (typing-nicks (when buf (clatter.core.model:get-typing-nicks buf)))
-           (split-p (ui-split-mode ui))
+    ;; status - show info for active pane in split mode
+    (let* ((split-p (ui-split-mode ui))
+           (active-pane (ui-active-pane ui))
+           (left-buf (current-buffer app))
            (right-buf (when (and split-p (ui-split-buffer-id ui)
                                  (< (ui-split-buffer-id ui) (length (app-buffers app))))
                         (aref (app-buffers app) (ui-split-buffer-id ui))))
+           ;; Use active pane's buffer for status info
+           (buf (if (and split-p (eq active-pane :right) right-buf)
+                    right-buf
+                    left-buf))
+           (unread (if buf (buffer-unread-count buf) 0))
+           (highlights (if buf (buffer-highlight-count buf) 0))
+           (typing-nicks (when buf (clatter.core.model:get-typing-nicks buf)))
+           (channel-modes (when buf (buffer-channel-modes buf)))
+           (my-modes (when buf (buffer-my-modes buf)))
            (typing-str (when typing-nicks
                          (if (= (length typing-nicks) 1)
                              (format nil "~a is typing..." (first typing-nicks))
                              (format nil "~{~a~^, ~} are typing..." typing-nicks))))
-           (line (if split-p
-                     (format nil " Ctrl+] pane | Ctrl-W unsplit | Ctrl-P/N left buf | Ctrl-R right buf | Ctrl-X swap")
-                     (format nil " [~a]~@[  unread:~d~]~@[  mentions:~d~]~@[  ~a~]"
-                             (if buf (buffer-title buf) "---")
-                             (and (> unread 0) unread)
-                             (and (> highlights 0) highlights)
-                             typing-str))))
+           ;; Build title with channel modes
+           (title-str (if buf
+                          (if (and channel-modes (> (length channel-modes) 0))
+                              (format nil "~a [~a]" (buffer-title buf) channel-modes)
+                              (buffer-title buf))
+                          "---"))
+           ;; Build mode indicator for status bar
+           (mode-str (when (and my-modes (> (length my-modes) 0))
+                       (format nil "(~a)" my-modes)))
+           (line (format nil " [~a]~@[ ~a~]~@[  unread:~d~]~@[  mentions:~d~]~@[  ~a~]"
+                         title-str
+                         mode-str
+                         (and (> unread 0) unread)
+                         (and (> highlights 0) highlights)
+                         typing-str)))
       (%draw-line wstatus 0 0 (subseq line 0 (min (length line) (de.anvi.croatoan:width wstatus)))))
 
     ;; input - with horizontal scrolling when text exceeds window width

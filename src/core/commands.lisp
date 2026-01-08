@@ -403,6 +403,26 @@
                                                :text "Usage: /names [#channel]")))))
      t)
     
+    ;; /list - list channels on server
+    ((string= cmd "LIST")
+     (let ((pattern (string-trim " " args)))
+       (if (> (length pattern) 0)
+           (clatter.net.irc:irc-send conn (format nil "LIST ~a" pattern))
+           (clatter.net.irc:irc-send conn "LIST")))
+     t)
+    
+    ;; /who - query user information
+    ((string= cmd "WHO")
+     (let ((target (string-trim " " args)))
+       (if (> (length target) 0)
+           (clatter.net.irc:irc-send conn (format nil "WHO ~a" target))
+           (de.anvi.croatoan:submit
+             (clatter.core.dispatch:deliver-message
+              app (clatter.core.model:current-buffer app)
+              (clatter.core.model:make-message :level :error :nick "*"
+                                               :text "Usage: /who <nick|#channel|mask>")))))
+     t)
+    
     ;; /monitor - track users online/offline
     ((string= cmd "MONITOR")
      (let* ((trimmed (string-trim " " args))

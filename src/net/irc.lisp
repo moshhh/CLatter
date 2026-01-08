@@ -389,6 +389,21 @@
               (away-msg (first params)))
          (irc-deliver-away conn nick away-msg)))
       
+      ;; MODE - channel or user mode change
+      ((string= command "MODE")
+       (let* ((target (first params))
+              (modes (rest params))
+              (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
+              (setter (or (clatter.core.protocol:prefix-nick parsed-prefix) target)))
+         (irc-handle-mode conn target setter modes)))
+      
+      ;; 324 RPL_CHANNELMODEIS - channel modes response
+      ((string= command "324")
+       (let ((channel (second params))
+             (modes (format nil "~{~a~^ ~}" (cddr params))))
+         (irc-log-system conn "Channel ~a modes: ~a" channel modes)
+         (irc-set-channel-modes conn channel modes)))
+      
       ;; 353 RPL_NAMREPLY - channel member list
       ((string= command "353")
        ;; params: nick = | @ channel :nick1 nick2 @nick3 +nick4 ...
@@ -621,6 +636,80 @@
                              (format nil "~a is now away: ~a" nick away-msg)
                              (format nil "~a is no longer away" nick))))))))
 
+(defun irc-set-channel-modes (conn channel modes)
+  "Set the channel modes string for a channel buffer."
+  (let* ((app (irc-app conn))
+         (buf (irc-find-buffer conn channel)))
+    (when buf
+      (de.anvi.croatoan:submit
+        (setf (clatter.core.model:buffer-channel-modes buf) modes)
+        (clatter.core.model:mark-dirty app :status)))))
+
+(defun irc-handle-mode (conn target setter modes)
+  "Handle a MODE change. TARGET is channel or nick, SETTER is who changed it, MODES is the mode string and args."
+  (let ((app (irc-app conn))
+        (mode-str (format nil "~{~a~^ ~}" modes)))
+    (de.anvi.croatoan:submit
+      (if (and (> (length target) 0) (char= (char target 0) #\#))
+          ;; Channel mode
+          (let ((buf (irc-find-buffer conn target)))
+            (when buf
+              ;; Update stored modes (simplified - just show the change)
+              ;; For a full implementation, we'd parse and merge modes
+              (clatter.core.dispatch:deliver-message
+               app buf
+               (clatter.core.model:make-message 
+                :level :mode :nick setter
+                :text (format nil "~a sets mode ~a" setter mode-str)))
+              ;; Check if mode affects us (op/voice)
+              (irc-update-my-modes conn buf modes)))
+          ;; User mode (our own modes)
+          (let ((buf (clatter.core.model:find-buffer app 0)))
+            (clatter.core.dispatch:deliver-message
+             app buf
+             (clatter.core.model:make-message 
+              :level :mode :nick setter
+              :text (format nil "Mode ~a ~a" target mode-str)))))))
+  ;; Request updated channel modes after a change
+  (when (and (> (length target) 0) (char= (char target 0) #\#))
+    (irc-send conn (format nil "MODE ~a" target))))
+
+(defun irc-update-my-modes (conn buf modes)
+  "Update my-modes in buffer if mode change affects us."
+  (let ((my-nick (irc-nick conn))
+        (mode-chars (first modes))
+        (args (rest modes)))
+    (when (and mode-chars (> (length mode-chars) 0))
+      (let ((adding t)
+            (arg-idx 0))
+        (loop for c across mode-chars do
+          (cond
+            ((char= c #\+) (setf adding t))
+            ((char= c #\-) (setf adding nil))
+            ;; Modes that take a nick argument
+            ((member c '(#\o #\v #\h #\q #\a))
+             (when (< arg-idx (length args))
+               (let ((nick (nth arg-idx args)))
+                 (when (string-equal nick my-nick)
+                   ;; Update our mode
+                   (let ((prefix (case c
+                                   (#\o "@")
+                                   (#\v "+")
+                                   (#\h "%")
+                                   (#\q "~")
+                                   (#\a "&"))))
+                     (if adding
+                         (unless (search prefix (clatter.core.model:buffer-my-modes buf))
+                           (setf (clatter.core.model:buffer-my-modes buf)
+                                 (concatenate 'string (clatter.core.model:buffer-my-modes buf) prefix)))
+                         (setf (clatter.core.model:buffer-my-modes buf)
+                               (remove-if (lambda (ch) (char= ch (char prefix 0)))
+                                          (clatter.core.model:buffer-my-modes buf)))))))
+               (incf arg-idx)))
+            ;; Modes that take other arguments (skip them)
+            ((member c '(#\k #\l #\b #\e #\I))
+             (incf arg-idx))))))))
+
 (defun irc-handle-typing (conn nick target typing-state)
   "Handle incoming typing indicator from another user."
   (let ((app (irc-app conn)))
@@ -724,18 +813,41 @@
       (remhash label (irc-pending-labels conn)))))
 
 (defun irc-add-members (conn channel names-str)
-  "Parse NAMES reply and add members to channel buffer."
-  (let ((app (irc-app conn)))
-    (declare (ignore app))
-    (de.anvi.croatoan:submit
-      (let ((buf (irc-find-buffer conn channel)))
-        (when buf
-          ;; Parse space-separated nicks, stripping @ + % prefixes
-          (dolist (name (uiop:split-string names-str :separator " "))
-            (when (> (length name) 0)
-              (let ((nick (string-left-trim "@+%~&" name)))
-                (when (> (length nick) 0)
-                  (setf (gethash nick (clatter.core.model:buffer-members buf)) t))))))))))
+  "Parse NAMES reply and add members to channel buffer.
+   Also detect our own modes from the prefix."
+  (let* ((app (irc-app conn))
+         (my-nick (irc-nick conn))
+         (buf (irc-find-buffer conn channel))
+         (found-my-mode nil))
+    (when buf
+      ;; Parse outside submit, collect data
+      (dolist (name (uiop:split-string names-str :separator " "))
+        (when (> (length name) 0)
+          (let* ((prefix-chars "@+%~&")
+                 (first-char (char name 0))
+                 (has-prefix (position first-char prefix-chars))
+                 (nick (if has-prefix (subseq name 1) name)))
+            (when (> (length nick) 0)
+              ;; Check if this is us and capture our mode
+              (when (and has-prefix (string-equal nick my-nick))
+                (setf found-my-mode (string first-char)))))))
+      ;; Now submit UI updates
+      (de.anvi.croatoan:submit
+        ;; Re-parse and add members
+        (dolist (name (uiop:split-string names-str :separator " "))
+          (when (> (length name) 0)
+            (let* ((prefix-chars "@+%~&")
+                   (first-char (char name 0))
+                   (has-prefix (position first-char prefix-chars))
+                   (nick (if has-prefix (subseq name 1) name)))
+              (when (> (length nick) 0)
+                (setf (gethash nick (clatter.core.model:buffer-members buf)) t)))))
+        ;; Set our mode if found
+        (when found-my-mode
+          (unless (search found-my-mode (clatter.core.model:buffer-my-modes buf))
+            (setf (clatter.core.model:buffer-my-modes buf)
+                  (concatenate 'string (clatter.core.model:buffer-my-modes buf) found-my-mode))))
+        (clatter.core.model:mark-dirty app :status)))))
 
 (defun irc-find-buffer (conn target)
   "Find buffer for target (channel or nick)."
@@ -761,6 +873,9 @@
         (setf (clatter.core.model:buffer-id buf) (length buffers))
         (vector-push-extend buf buffers)
         (clatter.core.model:mark-dirty app :buflist)))
+    ;; Request channel modes for channels
+    (when (and (> (length channel) 0) (char= (char channel 0) #\#))
+      (irc-send conn (format nil "MODE ~a" channel)))
     buf))
 
 (defun irc-read-loop (conn)

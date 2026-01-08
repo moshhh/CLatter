@@ -19,7 +19,9 @@
    (highlight-count :initform 0 :accessor buffer-highlight-count)
    (scroll-offset   :initform 0 :accessor buffer-scroll-offset)
    (members         :initform (make-hash-table :test 'equal) :accessor buffer-members)
-   (typing-users    :initform (make-hash-table :test 'equalp) :accessor buffer-typing-users)))
+   (typing-users    :initform (make-hash-table :test 'equalp) :accessor buffer-typing-users)
+   (channel-modes   :initform "" :accessor buffer-channel-modes)  ; e.g., "+nt"
+   (my-modes        :initform "" :accessor buffer-my-modes)))     ; my modes in this channel e.g., "@" or "+"
 
 (defun make-buffer (&key id (kind :channel) (title ""))
   (make-instance 'buffer :id id :kind kind :title title))
