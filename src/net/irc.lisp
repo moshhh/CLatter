@@ -204,14 +204,16 @@
          (if (member "sasl" acked :test #'string-equal)
              (cond
                ;; SASL EXTERNAL - certificate-based auth
+               ;; Don't send registration yet - wait for AUTHENTICATE + response
                ((eq sasl-type :external)
                 (irc-log-system conn "Starting SASL EXTERNAL authentication")
-                (irc-send conn "AUTHENTICATE EXTERNAL")
-                (irc-send-registration conn))
+                (setf (irc-sasl-state conn) :authenticating)
+                (irc-send conn "AUTHENTICATE EXTERNAL"))
                ;; SASL PLAIN - password-based auth
+               ;; Don't send registration yet - wait for AUTHENTICATE + response
                ((eq sasl-type :plain)
-                (irc-send conn "AUTHENTICATE PLAIN")
-                (irc-send-registration conn))
+                (setf (irc-sasl-state conn) :authenticating)
+                (irc-send conn "AUTHENTICATE PLAIN"))
                ;; Fallback
                (t
                 (irc-send conn "CAP END")
@@ -287,12 +289,14 @@
       ((string= command "903")
        (setf (irc-sasl-state conn) :done)
        (irc-log-system conn "SASL authentication successful")
-       (irc-send conn "CAP END"))
+       (irc-send conn "CAP END")
+       (irc-send-registration conn))
       
       ;; 904, 905 SASL failures
       ((or (string= command "904") (string= command "905"))
        (irc-log-error conn "SASL authentication failed: ~a" (second params))
-       (irc-send conn "CAP END"))
+       (irc-send conn "CAP END")
+       (irc-send-registration conn))
       
       ;; 001 RPL_WELCOME - registration complete
       ((string= command "001")
