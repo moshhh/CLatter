@@ -294,12 +294,14 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
            ;; Build mode indicator for status bar
            (mode-str (when (and my-modes (> (length my-modes) 0))
                        (format nil "(~a)" my-modes)))
-           (line (format nil " [~a]~@[ ~a~]~@[  unread:~d~]~@[  mentions:~d~]~@[  ~a~]"
+           (shortcuts " | ^P/N buf | ^U/D scroll | ^W split | ^L redraw")
+           (line (format nil " [~a]~@[ ~a~]~@[  unread:~d~]~@[  mentions:~d~]~@[  ~a~]~a"
                          title-str
                          mode-str
                          (and (> unread 0) unread)
                          (and (> highlights 0) highlights)
-                         typing-str)))
+                         typing-str
+                         shortcuts)))
       (%draw-line wstatus 0 0 (subseq line 0 (min (length line) (de.anvi.croatoan:width wstatus)))))
 
     ;; input - with horizontal scrolling when text exceeds window width

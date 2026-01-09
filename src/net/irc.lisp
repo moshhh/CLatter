@@ -731,7 +731,8 @@
 (defun irc-send-typing (conn target state)
   "Send typing indicator if the capability is enabled.
    STATE should be :active, :paused, or :done."
-  (when (member "message-tags" (irc-cap-enabled conn) :test #'string-equal)
+  (when (or (member "typing" (irc-cap-enabled conn) :test #'string-equal)
+            (member "draft/typing" (irc-cap-enabled conn) :test #'string-equal))
     (irc-send conn (clatter.core.protocol:irc-typing target state))))
 
 (defun irc-accumulate-batch-message (conn batch-id sender-nick text server-time)
