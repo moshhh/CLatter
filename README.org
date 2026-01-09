@@ -142,17 +142,24 @@ More secure - uses a client certificate instead of a password.
 
 4. You can now remove =:nickserv-pw= - the certificate handles authentication
 
-*** Authinfo Password Storage
+*** Password Storage Options
 
-Instead of storing passwords in =config.lisp=, you can use =~/.authinfo= or =~/.authinfo.gpg= (encrypted with GPG). Set =:nickserv-pw :authinfo= in your config:
+CLatter supports multiple methods for storing your NickServ password securely.
+
+**** Plain Text (not recommended)
+
+Store the password directly in the config file:
 
 #+begin_src lisp
-(:name "libera"
- :server "irc.libera.chat"
- :nick "yournick"
- :nickserv-pw :authinfo
- :sasl :plain
- ...)
+:nickserv-pw "your-password"
+#+end_src
+
+**** Authinfo (GPG encrypted)
+
+Use =~/.authinfo= or =~/.authinfo.gpg= (encrypted with GPG):
+
+#+begin_src lisp
+:nickserv-pw :authinfo
 #+end_src
 
 Then add an entry to your =~/.authinfo.gpg= file:
@@ -161,6 +168,25 @@ machine irc.libera.chat login yournick password your-secret-password
 #+end_example
 
 CLatter will decrypt the file using GPG and look up the password by matching the server and nick.
+
+**** systemd-creds (encrypted with TPM/host key)
+
+Use =systemd-creds= to encrypt your password. This ties the credential to your machine and doesn't require GPG.
+
+1. Create the encrypted credential:
+   #+begin_src bash
+   mkdir -p ~/.config/clatter/creds
+   read -s -p "Enter NickServ password: " pw && echo -n "$pw" | \
+     systemd-creds encrypt - ~/.config/clatter/creds/nickserv.cred && \
+     echo -e "\nCredential saved"
+   #+end_src
+
+2. Update your config:
+   #+begin_src lisp
+   :nickserv-pw (:systemd-cred "/home/you/.config/clatter/creds/nickserv.cred")
+   #+end_src
+
+CLatter will decrypt the credential file at startup using =systemd-creds decrypt=.
 
 ** Commands
 

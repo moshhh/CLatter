@@ -163,11 +163,33 @@ Returns plist with :login and :password, or nil if not found."
                          (string-equal (getf entry :login) login)))
             (return entry)))))))
 
+(defun read-systemd-cred (path)
+  "Decrypt a systemd-creds encrypted file and return its contents."
+  (handler-case
+      (string-trim '(#\Space #\Newline #\Return)
+                   (with-output-to-string (out)
+                     (uiop:run-program (list "systemd-creds" "decrypt" path "-")
+                                       :output out
+                                       :error-output nil)))
+    (error () nil)))
+
 (defun get-network-password (nc)
-  "Get password for network config, checking authinfo if :nickserv-pw is :authinfo."
+  "Get password for network config.
+   Supports:
+   - :authinfo - read from ~/.authinfo or ~/.authinfo.gpg
+   - (:systemd-cred \"/path/to/file.cred\") - decrypt using systemd-creds
+   - plain string - use directly"
   (let ((pw (network-config-nickserv-pw nc)))
-    (if (eq pw :authinfo)
-        (let ((entry (lookup-authinfo (network-config-server nc)
-                                      (network-config-nick nc))))
-          (getf entry :password))
-        pw)))
+    (cond
+      ;; :authinfo - lookup from authinfo file
+      ((eq pw :authinfo)
+       (let ((entry (lookup-authinfo (network-config-server nc)
+                                     (network-config-nick nc))))
+         (getf entry :password)))
+      ;; (:systemd-cred "/path/to/file.cred") - decrypt using systemd-creds
+      ((and (listp pw) (eq (first pw) :systemd-cred))
+       (let ((cred-path (second pw)))
+         (when cred-path
+           (read-systemd-cred cred-path))))
+      ;; Plain string password
+      (t pw))))
