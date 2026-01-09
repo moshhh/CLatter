@@ -309,6 +309,13 @@
          (when (and ns-pw (not (eq (irc-sasl-state conn) :done)))
            (irc-send conn (clatter.core.protocol:irc-privmsg "NickServ"
                                                              (format nil "IDENTIFY ~a" ns-pw)))))
+       ;; If we used SASL and got a different nick (collision), try to REGAIN
+       (let* ((cfg (irc-network-config conn))
+              (wanted-nick (clatter.core.config:network-config-nick cfg)))
+         (when (and (eq (irc-sasl-state conn) :done)
+                    (not (string-equal (irc-nick conn) wanted-nick)))
+           (irc-send conn (clatter.core.protocol:irc-privmsg "NickServ"
+                                                             (format nil "REGAIN ~a" wanted-nick)))))
        ;; Autojoin channels
        (let ((channels (clatter.core.config:network-config-autojoin (irc-network-config conn))))
          (dolist (ch channels)
@@ -385,6 +392,19 @@
               (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
               (nick (clatter.core.protocol:prefix-nick parsed-prefix)))
          (irc-deliver-quit conn nick message)))
+      
+      ;; NICK - nick change (ours or someone else's)
+      ((string= command "NICK")
+       (let* ((new-nick (first params))
+              (parsed-prefix (clatter.core.protocol:parse-prefix prefix))
+              (old-nick (clatter.core.protocol:prefix-nick parsed-prefix)))
+         (if (string-equal old-nick (irc-nick conn))
+             ;; Our nick changed (e.g., from REGAIN)
+             (progn
+               (setf (irc-nick conn) new-nick)
+               (irc-log-system conn "Nick changed to ~a" new-nick))
+             ;; Someone else changed nick - notify channels
+             (irc-deliver-nick-change conn old-nick new-nick))))
       
       ;; AWAY - IRCv3 away-notify capability
       ((string= command "AWAY")
@@ -639,6 +659,26 @@
                    :text (if (and away-msg (> (length away-msg) 0))
                              (format nil "~a is now away: ~a" nick away-msg)
                              (format nil "~a is no longer away" nick))))))))
+
+(defun irc-deliver-nick-change (conn old-nick new-nick)
+  "Deliver a nick change notification and update member lists."
+  (let ((app (irc-app conn)))
+    (de.anvi.croatoan:submit
+      ;; Update nick in all channel buffers where user is present
+      (loop for i from 1 below (length (clatter.core.model:app-buffers app))
+            for buf = (aref (clatter.core.model:app-buffers app) i)
+            when (and buf (gethash old-nick (clatter.core.model:buffer-members buf)))
+              do (progn
+                   ;; Update member list
+                   (let ((modes (gethash old-nick (clatter.core.model:buffer-members buf))))
+                     (remhash old-nick (clatter.core.model:buffer-members buf))
+                     (setf (gethash new-nick (clatter.core.model:buffer-members buf)) modes))
+                   ;; Notify channel
+                   (clatter.core.dispatch:deliver-message
+                    app buf
+                    (clatter.core.model:make-message 
+                     :level :nick :nick old-nick
+                     :text (format nil "~a is now known as ~a" old-nick new-nick))))))))
 
 (defun irc-set-channel-modes (conn channel modes)
   "Set the channel modes string for a channel buffer."
