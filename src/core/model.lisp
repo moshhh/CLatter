@@ -43,7 +43,7 @@
    (win-input   :initform nil :accessor ui-win-input)
    (term-w      :initform 0 :accessor ui-term-w)
    (term-h      :initform 0 :accessor ui-term-h)
-   (buflist-w   :initform 24 :accessor ui-buflist-w)
+   (buflist-w   :initform 28 :accessor ui-buflist-w)
    (input       :initform (make-input-state) :accessor ui-input)
    ;; Split pane state
    (split-mode  :initform nil :accessor ui-split-mode)  ;; nil or :horizontal
