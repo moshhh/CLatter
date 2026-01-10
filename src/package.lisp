@@ -36,7 +36,7 @@
    #:network-config-sasl #:network-config-client-cert #:network-config-autojoin #:network-config-autoconnect
    #:config #:make-config #:config-networks #:config-default-network #:config-time-format
    #:load-config #:save-config #:find-network-config #:add-network-config
-   #:default-libera-config #:get-network-password #:lookup-authinfo))
+   #:default-libera-config #:get-network-password #:get-server-password #:lookup-authinfo))
 
 (defpackage #:clatter.core.protocol
   (:use #:cl)

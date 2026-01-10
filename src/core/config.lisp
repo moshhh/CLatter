@@ -173,23 +173,34 @@ Returns plist with :login and :password, or nil if not found."
                                        :error-output nil)))
     (error () nil)))
 
-(defun get-network-password (nc)
-  "Get password for network config.
-   Supports:
-   - :authinfo - read from ~/.authinfo or ~/.authinfo.gpg
+(defun resolve-password (pw &optional server nick)
+  "Resolve a password value that may be:
+   - :authinfo - read from ~/.authinfo or ~/.authinfo.gpg (requires server/nick)
    - (:systemd-cred \"/path/to/file.cred\") - decrypt using systemd-creds
-   - plain string - use directly"
-  (let ((pw (network-config-nickserv-pw nc)))
-    (cond
-      ;; :authinfo - lookup from authinfo file
-      ((eq pw :authinfo)
-       (let ((entry (lookup-authinfo (network-config-server nc)
-                                     (network-config-nick nc))))
-         (getf entry :password)))
-      ;; (:systemd-cred "/path/to/file.cred") - decrypt using systemd-creds
-      ((and (listp pw) (eq (first pw) :systemd-cred))
-       (let ((cred-path (second pw)))
-         (when cred-path
-           (read-systemd-cred cred-path))))
-      ;; Plain string password
-      (t pw))))
+   - plain string - use directly
+   - nil - no password"
+  (cond
+    ;; :authinfo - lookup from authinfo file
+    ((eq pw :authinfo)
+     (when (and server nick)
+       (let ((entry (lookup-authinfo server nick)))
+         (getf entry :password))))
+    ;; (:systemd-cred "/path/to/file.cred") - decrypt using systemd-creds
+    ((and (listp pw) (eq (first pw) :systemd-cred))
+     (let ((cred-path (second pw)))
+       (when cred-path
+         (read-systemd-cred cred-path))))
+    ;; Plain string password or nil
+    (t pw)))
+
+(defun get-network-password (nc)
+  "Get NickServ password for network config."
+  (resolve-password (network-config-nickserv-pw nc)
+                    (network-config-server nc)
+                    (network-config-nick nc)))
+
+(defun get-server-password (nc)
+  "Get server password for network config."
+  (resolve-password (network-config-password nc)
+                    (network-config-server nc)
+                    (network-config-nick nc)))

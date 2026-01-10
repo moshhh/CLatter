@@ -123,7 +123,7 @@
          (nick (clatter.core.config:network-config-nick cfg))
          (username (or (clatter.core.config:network-config-username cfg) nick))
          (realname (clatter.core.config:network-config-realname cfg))
-         (password (clatter.core.config:network-config-password cfg)))
+         (password (clatter.core.config:get-server-password cfg)))
     (when password
       (irc-send conn (clatter.core.protocol:irc-pass password)))
     (irc-send conn (clatter.core.protocol:irc-nick nick))

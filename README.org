@@ -144,7 +144,7 @@ More secure - uses a client certificate instead of a password.
 
 *** Password Storage Options
 
-CLatter supports multiple methods for storing your NickServ password securely.
+CLatter supports multiple methods for storing passwords securely. These options work for both =:nickserv-pw= (NickServ/SASL password) and =:password= (server password).
 
 **** Plain Text (not recommended)
 
@@ -187,6 +187,20 @@ Use =systemd-creds= to encrypt your password. This ties the credential to your m
    #+end_src
 
 CLatter will decrypt the credential file at startup using =systemd-creds decrypt=.
+
+**** Server Password
+
+If your IRC server requires a connection password (separate from NickServ), use the =:password= field with any of the above methods:
+
+#+begin_src lisp
+:password (:systemd-cred "/home/you/.config/clatter/creds/server.cred")
+#+end_src
+
+Or with authinfo/plain text:
+#+begin_src lisp
+:password :authinfo
+:password "plain-text-password"
+#+end_src
 
 ** Commands
 
