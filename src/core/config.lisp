@@ -189,7 +189,7 @@ Returns plist with :login and :password, or nil if not found."
 (defun resolve-password (pw &optional server nick)
 "Resolve a password value that may be:
    - :authinfo - read from ~/.authinfo or ~/.authinfo.gpg (requires server/nick)
-   - (:systemd-cred \"/path/to/file.cred\") - decrypt using systemd-creds
+   - (:systemd-cred (optional) \"--user\" \"/path/to/file.cred\") - decrypt using systemd-creds
    - (:pass password-name) - decrypt using pass(1)
    - plain string - use directly
    - nil - no password"
@@ -202,15 +202,15 @@ Returns plist with :login and :password, or nil if not found."
 
     ;; (:systemd-cred "/path/to/file.cred") - decrypt using systemd-creds
     ((and (listp pw) (eq (first pw) :systemd-cred))
-     (and (listp pw) (eq (second pw) "--user"))
-     (let ((user-flag (second pw)))
-       (let ((cred-path (third pw)))
-         (when cred-path
-           (read-systemd-cred user-flag cred-path))))
+      ;; (and (listp pw) (eq (second pw) --user))
+      ;;   (let ((user-flag (second pw)))
+      ;;    (let ((cred-path (third pw)))
+      ;;      (when cred-path
+      ;;        (read-systemd-cred cred-path))))
 
-     (let ((cred-path (second pw)))
-      (when cred-path
-        (read-systemd-cred cred-path))))
+      (let ((cred-path (second pw)))
+        (when cred-path
+          (read-systemd-cred cred-path))))
 
     ;; (:pass "password-name") - decrypt using pass(1)
     ((and (listp pw) (eq (first pw) :pass))
