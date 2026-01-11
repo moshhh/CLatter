@@ -167,12 +167,12 @@ Returns plist with :login and :password, or nil if not found."
                          (string-equal (getf entry :login) login)))
             (return entry)))))))
 
-(defun read-systemd-cred (path &optional user-flag) 
+(defun read-systemd-cred (path &optional user-switch) 
   "Decrypt a systemd-creds encrypted file and return its contents."
   (handler-case
       (string-trim '(#\Space #\Newline #\Return)
                    (with-output-to-string (out)
-                     (uiop:run-program (list "systemd-creds" user-flag "decrypt" path "-")
+                     (uiop:run-program (list "systemd-creds" user-switch "decrypt" path "-")
                                        :output out
                                        :error-output nil)))
     (error () nil)))
@@ -200,17 +200,16 @@ Returns plist with :login and :password, or nil if not found."
        (let ((entry (lookup-authinfo server nick)))
          (getf entry :password))))
 
-    ;; (:systemd-cred "/path/to/file.cred") - decrypt using systemd-creds
-    ((and (listp pw) (eq (first pw) :systemd-cred))
-      ;; (and (listp pw) (eq (second pw) --user))
-      ;;   (let ((user-flag (second pw)))
-      ;;    (let ((cred-path (third pw)))
-      ;;      (when cred-path
-      ;;        (read-systemd-cred cred-path))))
-
-      (let ((cred-path (second pw)))
-        (when cred-path
-          (read-systemd-cred cred-path))))
+    ;; (:systemd-cred (optional) "--user" "/path/to/file.cred") - decrypt using systemd-creds
+    ((if (and (listp pw) (eq (first pw) :systemd-cred))
+      (cond (and (listp pw) (equal (second pw) "--user"))
+        (let ((user-switch (second pw))
+              (cred-path (third pw)))
+                (when cred-path
+                  (read-systemd-cred user-switch cred-path)))
+        (t (let ((cred-path (second pw))
+          (when cred-path
+            (read-systemd-cred cred-path))))))
 
     ;; (:pass "password-name") - decrypt using pass(1)
     ((and (listp pw) (eq (first pw) :pass))
@@ -219,7 +218,7 @@ Returns plist with :login and :password, or nil if not found."
          (read-password-store password-name))))
        
     ;; Plain string password or nil
-    (t pw)))
+    (t pw))))
 
 (defun get-network-password (nc)
   "Get NickServ password for network config."
