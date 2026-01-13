@@ -2,6 +2,51 @@
   (:use #:cl)
   (:export #:main))
 
+(defpackage #:clatter.core.constants
+  (:use #:cl)
+  (:export
+   ;; Buffer & UI
+   #:+default-scrollback-capacity+ #:+default-buflist-width+ #:+default-nicklist-width+
+   #:+max-recent-urls+
+   ;; Connection & Timing
+   #:+health-check-interval+ #:+typing-throttle-seconds+
+   #:+ping-timeout-seconds+ #:+pong-timeout-seconds+
+   #:+reconnect-min-delay+ #:+reconnect-max-delay+
+   ;; IRC Protocol
+   #:+irc-max-line-length+ #:+irc-safe-message-length+ #:+irc-max-channel-length+
+   ;; DCC
+   #:+dcc-port-range-start+ #:+dcc-port-range-end+ #:+dcc-timeout-seconds+ #:+dcc-buffer-size+
+   ;; IRC Numerics
+   #:+rpl-welcome+ #:+rpl-yourhost+ #:+rpl-created+ #:+rpl-myinfo+ #:+rpl-isupport+
+   #:+rpl-namreply+ #:+rpl-endofnames+ #:+rpl-topic+ #:+rpl-topicwhotime+
+   #:+rpl-motd+ #:+rpl-motdstart+ #:+rpl-endofmotd+
+   #:+rpl-whoisuser+ #:+rpl-whoisserver+ #:+rpl-whoisoperator+ #:+rpl-whoisidle+
+   #:+rpl-endofwhois+ #:+rpl-whoischannels+ #:+rpl-whoisaccount+
+   #:+err-nicknameinuse+
+   ;; External Services
+   #:+crafterbin-url+
+   ;; IRCv3
+   #:+wanted-capabilities+))
+
+(defpackage #:clatter.core.debug
+  (:use #:cl)
+  (:export
+   ;; Level constants
+   #:+level-off+ #:+level-error+ #:+level-warn+ #:+level-info+ #:+level-debug+ #:+level-trace+
+   ;; State
+   #:*debug-level* #:level-name
+   ;; Configuration
+   #:set-debug-level #:debug-status
+   ;; Category management
+   #:enable-debug-category #:disable-debug-category #:debug-category-enabled-p 
+   #:list-debug-categories #:clear-debug-categories
+   ;; File logging
+   #:open-debug-file #:close-debug-file
+   ;; Core logging
+   #:debug-log #:log-error #:log-warn #:log-info #:log-debug #:log-trace
+   ;; Protocol logging
+   #:log-irc-raw #:log-irc-event))
+
 (defpackage #:clatter.core.ring
   (:use #:cl)
   (:export #:make-ring #:ring-push #:ring->list #:ring-count))
@@ -17,6 +62,8 @@
    #:buffer-dcc-connection
    #:create-server-buffer
    #:buffer-unread-count #:buffer-highlight-count #:buffer-scroll-offset #:buffer-members #:buffer-typing-users #:get-typing-nicks
+   #:buffer-filter-pattern #:buffer-filter-active #:buffer-recent-urls
+   #:extract-urls #:buffer-add-urls #:open-url #:+max-recent-urls+
    #:buffer-channel-modes #:buffer-my-modes
    #:ui-win-chat2 #:ui-win-nicklist #:ui-split-mode #:ui-split-buffer-id #:ui-active-pane
    #:ui-nicklist-w #:ui-nicklist-visible
@@ -27,7 +74,7 @@
    #:input-state #:make-input-state #:input-text #:input-cursor #:input-history #:input-history-pos
    #:find-buffer #:current-buffer #:active-buffer
    #:get-buffer-connection #:get-current-connection
-   #:remove-buffer #:find-buffer-by-title
+   #:remove-buffer #:compact-buffers #:find-buffer-by-title
    #:app-ignore-list #:ignore-nick #:unignore-nick #:ignored-p #:list-ignored
    #:buffer-add-member #:buffer-remove-member #:buffer-has-member-p #:buffer-member-list
    #:app-buffers-list #:find-buffer-by-network #:create-buffer))
@@ -53,6 +100,14 @@
    #:parse-irc-line #:format-irc-line
    #:parse-irc-tags #:get-server-time #:parse-iso8601-time
    #:parse-prefix #:prefix-nick #:strip-irc-formatting
+   ;; Input sanitization
+   #:sanitize-irc-input #:validate-irc-input
+   ;; Channel validation
+   #:channel-prefix-p #:channel-name-p #:valid-channel-name-p
+   ;; Message length
+   #:+irc-max-line-length+ #:+irc-safe-message-length+
+   #:message-overhead #:max-message-length #:split-long-message
+   ;; IRC commands
    #:irc-nick #:irc-user #:irc-pass #:irc-join #:irc-part
    #:irc-privmsg #:irc-notice #:irc-quit #:irc-pong #:irc-ping #:irc-cap
    #:irc-whois #:irc-topic #:irc-kick #:irc-mode #:irc-away #:irc-ctcp-reply
@@ -118,7 +173,7 @@
                 #:app #:app-ui #:app-current-buffer-id #:buffer #:buffer-id #:message
                 #:mark-dirty #:current-buffer #:find-buffer
                 #:buffer-scrollback #:buffer-unread-count #:buffer-highlight-count
-                #:buffer-scroll-offset
+                #:buffer-scroll-offset #:buffer-add-urls
                 #:ui-split-mode #:ui-split-buffer-id)
   (:import-from #:clatter.core.ring #:ring-push)
   (:export #:apply-event #:deliver-message))
@@ -141,6 +196,7 @@
                 #:app #:app-ui #:app-buffers #:app-current-buffer-id #:app-buffer-order #:app-connections
                 #:buffer #:buffer-title #:buffer-kind #:buffer-network #:buffer-unread-count #:buffer-highlight-count
                 #:buffer-channel-modes #:buffer-my-modes #:buffer-members
+                #:buffer-filter-pattern #:buffer-filter-active
                 #:current-buffer #:buffer-scrollback #:buffer-scroll-offset
                 #:input-text #:input-cursor
                 #:dirty-p #:clear-dirty
@@ -148,7 +204,12 @@
                 #:ui-split-mode #:ui-split-buffer-id #:ui-active-pane
                 #:ui-nicklist-w #:ui-nicklist-visible)
   (:import-from #:clatter.core.ring #:ring->list)
-  (:export #:render-frame))
+  (:export #:render-frame
+           ;; Theme system
+           #:*current-theme* #:current-theme #:set-theme
+           #:find-theme #:list-themes #:register-theme
+           #:base-theme #:dark-theme #:light-theme #:solarized-dark-theme
+           #:minimal-theme #:ascii-theme #:rounded-theme))
 
 (defpackage #:clatter.ui.keymap
   (:use #:cl)
@@ -216,7 +277,8 @@
    ;; Handling offers
    #:dcc-handle-offer
    ;; Utilities
-   #:ip-integer-to-string #:ip-string-to-integer))
+   #:ip-integer-to-string #:ip-string-to-integer
+   #:get-local-ip #:set-dcc-ip))
 
 (defpackage #:clatter.app
   (:use #:cl)

@@ -35,6 +35,10 @@ A terminal-based IRC client written in Common Lisp using the [[https://codeberg.
 - *Ignore List* - Hide messages from specific users with ~/ignore~
 - *Away Status* - Set away status with ~/away~
 - *Secure Password Storage* - Support for authinfo.gpg, systemd-creds, and pass(1)
+- *Theming* - Multiple built-in themes (dark, light, solarized, minimal, ascii, rounded) with ~/theme~
+- *Message Search* - Search buffer history with ~/search~
+- *Message Filtering* - Filter displayed messages with ~/filter~
+- *URL Detection* - Automatically tracks URLs in chat, open with ~/url~
 
 ** Requirements
 
@@ -276,6 +280,11 @@ Or with authinfo/plain text:
 | ~/list [pattern]~            | List channels on server                  |
 | ~/who target~                | Query user/channel info                  |
 | ~/raw line~                  | Send raw IRC command                     |
+| ~/theme [name]~              | List themes or switch theme              |
+| ~/search pattern~            | Search current buffer for messages       |
+| ~/filter pattern~            | Show only messages matching pattern      |
+| ~/unfilter~                  | Clear message filter                     |
+| ~/url [N\vert{}list]~        | Open Nth recent URL or list URLs         |
 | ~/help~                      | Show help                                |
 
 ** Keybindings
@@ -293,8 +302,9 @@ Or with authinfo/plain text:
 | Ctrl-L      | Refresh/redraw screen     |
 | Backspace   | Delete character          |
 | Enter       | Send message/command      |
-| Ctrl-W      | Toggle split-pane view    |
-| Ctrl-]      | Switch active pane        |
+| Ctrl-W      | Toggle split pane         |
+| Ctrl-T      | Toggle split orientation  |
+| Ctrl-L      | Force redraw              |
 | Ctrl-R      | Set right pane buffer     |
 | Ctrl-X      | Swap panes                |
 | F10         | Quit                      |

@@ -19,10 +19,15 @@
   ((id              :initarg :id :accessor buffer-id)
    (title           :initarg :title :accessor buffer-title)
    (network         :initarg :network :initform nil :accessor buffer-network)
-   (scrollback      :initform (make-ring :capacity 4000) :reader buffer-scrollback)
+   (scrollback      :initform (make-ring :capacity clatter.core.constants:+default-scrollback-capacity+) :reader buffer-scrollback)
    (unread-count    :initform 0 :accessor buffer-unread-count)
    (highlight-count :initform 0 :accessor buffer-highlight-count)
-   (scroll-offset   :initform 0 :accessor buffer-scroll-offset))
+   (scroll-offset   :initform 0 :accessor buffer-scroll-offset)
+   ;; Filter support for /search and /filter commands
+   (filter-pattern  :initform nil :accessor buffer-filter-pattern)
+   (filter-active   :initform nil :accessor buffer-filter-active)
+   ;; URL tracking for /url command
+   (recent-urls     :initform nil :accessor buffer-recent-urls))
   (:documentation "Base class for all IRC buffers."))
 
 ;;; Server buffer - for server messages, no members or typing
@@ -138,14 +143,14 @@
    (win-input   :initform nil :accessor ui-win-input)
    (term-w      :initform 0 :accessor ui-term-w)
    (term-h      :initform 0 :accessor ui-term-h)
-   (buflist-w   :initform 28 :accessor ui-buflist-w)
-   (nicklist-w  :initform 20 :accessor ui-nicklist-w)  ;; nick list width
+   (buflist-w   :initform clatter.core.constants:+default-buflist-width+ :accessor ui-buflist-w)
+   (nicklist-w  :initform clatter.core.constants:+default-nicklist-width+ :accessor ui-nicklist-w)  ;; nick list width
    (nicklist-visible :initform nil :accessor ui-nicklist-visible)  ;; toggle state
    (input       :initform (make-input-state) :accessor ui-input)
    ;; Split pane state
-   (split-mode  :initform nil :accessor ui-split-mode)  ;; nil or :horizontal
+   (split-mode  :initform nil :accessor ui-split-mode)  ;; nil, :horizontal, or :vertical
    (split-buffer-id :initform nil :accessor ui-split-buffer-id)  ;; buffer shown in second pane
-   (active-pane :initform :left :accessor ui-active-pane)))  ;; :left or :right
+   (active-pane :initform :left :accessor ui-active-pane)))  ;; :left/:right (horiz) or :top/:bottom (vert)
 
 (defun make-ui-state () (make-instance 'ui-state))
 
@@ -205,14 +210,17 @@
 (defun active-buffer (app)
   "Return the buffer that should receive input (respects active pane in split mode)."
   (let ((ui (app-ui app)))
-    (if (and ui (ui-split-mode ui) (eq (ui-active-pane ui) :right))
-        (let ((right-buf (find-buffer app (ui-split-buffer-id ui))))
-          (if right-buf
-              right-buf
-              ;; Right buffer is nil, fall back to current-buffer and disable split
+    (if (and ui (ui-split-mode ui) 
+             (member (ui-active-pane ui) '(:right :bottom)))
+        ;; Active pane is the split pane (right in horizontal, bottom in vertical)
+        (let ((split-buf (find-buffer app (ui-split-buffer-id ui))))
+          (if split-buf
+              split-buf
+              ;; Split buffer is nil, fall back to current-buffer and disable split
               (progn
                 (setf (ui-split-mode ui) nil)
                 (current-buffer app))))
+        ;; Active pane is the main pane (left in horizontal, top in vertical)
         (current-buffer app))))
 
 (defun get-buffer-connection (app buf)
@@ -226,11 +234,12 @@
 
 (defun remove-buffer (app buffer-id)
   "Remove a buffer from the app. Cannot remove the server buffer (id 0).
-   Returns t if removed, nil otherwise."
+   Returns t if removed, nil otherwise.
+   Automatically compacts buffer vector to prevent memory leaks."
   (when (and (> buffer-id 0) (< buffer-id (length (app-buffers app))))
     (let ((buffers (app-buffers app))
           (ui (app-ui app)))
-      ;; Mark the buffer slot as nil (we can't easily shrink the vector without breaking IDs)
+      ;; Mark the buffer slot as nil
       (setf (aref buffers buffer-id) nil)
       ;; If current buffer was removed, switch to server buffer
       (when (= (app-current-buffer-id app) buffer-id)
@@ -239,8 +248,53 @@
       (when (and (ui-split-mode ui) (= (ui-split-buffer-id ui) buffer-id))
         (setf (ui-split-mode ui) nil
               (ui-split-buffer-id ui) nil))
+      ;; Compact buffers to reclaim memory
+      (compact-buffers app)
       (mark-dirty app :buflist :chat :status)
       t)))
+
+(defun compact-buffers (app)
+  "Remove nil slots from buffer vector and update all buffer IDs.
+   This prevents memory leaks from accumulated nil slots after buffer removal.
+   Preserves buffer order and updates current-buffer-id and split-buffer-id."
+  (let* ((old-buffers (app-buffers app))
+         (old-len (length old-buffers))
+         (ui (app-ui app))
+         (old-current-id (app-current-buffer-id app))
+         (old-split-id (when ui (ui-split-buffer-id ui)))
+         ;; Build mapping from old IDs to new IDs
+         (id-map (make-hash-table :test 'eql))
+         (new-buffers (make-array 16 :adjustable t :fill-pointer 0))
+         (new-id 0))
+    ;; First pass: collect non-nil buffers and build ID mapping
+    (loop for old-id from 0 below old-len
+          for buf = (aref old-buffers old-id)
+          when buf do
+            (setf (gethash old-id id-map) new-id)
+            (setf (buffer-id buf) new-id)
+            (vector-push-extend buf new-buffers)
+            (incf new-id))
+    ;; Update current buffer ID
+    (let ((new-current (gethash old-current-id id-map)))
+      (setf (app-current-buffer-id app)
+            (if new-current new-current 0)))
+    ;; Update split buffer ID if in split mode
+    (when (and ui old-split-id)
+      (let ((new-split (gethash old-split-id id-map)))
+        (if new-split
+            (setf (ui-split-buffer-id ui) new-split)
+            ;; Split buffer was removed, disable split mode
+            (setf (ui-split-mode ui) nil
+                  (ui-split-buffer-id ui) nil))))
+    ;; Update buffer order list
+    (let ((old-order (app-buffer-order app)))
+      (when old-order
+        (setf (app-buffer-order app)
+              (loop for old-id in old-order
+                    for new-id = (gethash old-id id-map)
+                    when new-id collect new-id))))
+    ;; Replace the buffer vector
+    (setf (app-buffers app) new-buffers)))
 
 (defun find-buffer-by-title (app title)
   "Find a buffer by its title. Returns the buffer or nil."
@@ -335,3 +389,64 @@
   "Return a list of all non-nil buffers in the app."
   (loop for buf across (app-buffers app)
         when buf collect buf))
+
+;;;; ============================================================
+;;;; URL Detection and Tracking
+;;;; ============================================================
+
+;; Use constant from clatter.core.constants:+max-recent-urls+
+
+(defun extract-urls (text)
+  "Extract all URLs from TEXT. Returns list of URL strings."
+  (when text
+    (let ((urls nil)
+          (pos 0)
+          (len (length text)))
+      (loop while (< pos len) do
+        ;; Find http:// or https://
+        (let ((http-pos (search "http://" text :start2 pos :test #'char-equal))
+              (https-pos (search "https://" text :start2 pos :test #'char-equal)))
+          (let ((start (cond
+                         ((and http-pos https-pos) (min http-pos https-pos))
+                         (http-pos http-pos)
+                         (https-pos https-pos)
+                         (t nil))))
+            (if start
+                (let ((end start))
+                  ;; Find end of URL (space, <, >, or end of string)
+                  (loop while (and (< end len)
+                                  (not (member (char text end) 
+                                              '(#\Space #\Tab #\Newline #\< #\> #\" #\) #\]))))
+                        do (incf end))
+                  ;; Strip trailing punctuation
+                  (loop while (and (> end start)
+                                  (member (char text (1- end)) '(#\. #\, #\; #\: #\! #\?)))
+                        do (decf end))
+                  (when (> end start)
+                    (push (subseq text start end) urls))
+                  (setf pos end))
+                (setf pos len)))))
+      (nreverse urls))))
+
+(defun buffer-add-urls (buf text)
+  "Extract URLs from TEXT and add them to buffer's recent-urls list."
+  (when (and buf text)
+    (let ((urls (extract-urls text)))
+      (when urls
+        (setf (buffer-recent-urls buf)
+              (subseq (append urls (buffer-recent-urls buf))
+                      0 (min clatter.core.constants:+max-recent-urls+ 
+                             (+ (length urls) (length (buffer-recent-urls buf))))))))))
+
+(defun open-url (url)
+  "Open URL in the default browser."
+  (handler-case
+      (progn
+        #+linux
+        (uiop:run-program (list "xdg-open" url) :ignore-error-status t)
+        #+darwin
+        (uiop:run-program (list "open" url) :ignore-error-status t)
+        #+windows
+        (uiop:run-program (list "cmd" "/c" "start" url) :ignore-error-status t)
+        t)
+    (error () nil)))

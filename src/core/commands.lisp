@@ -275,8 +275,7 @@
                                                  :text "Usage: /autojoin [list|add|remove] [#channel]")))))))))
 
 
-(defparameter *crafterbin-url* "https://crafterbin.glennstack.dev"
-  "URL of the CrafterBin service.")
+;; CrafterBin URL - use clatter.core.constants:+crafterbin-url+
 
 (defun handle-crafterbin-command (app args)
   "Handle /crafterbin <file> - upload file to crafterbin and copy URL to clipboard."
@@ -319,7 +318,7 @@
   (handler-case
       (multiple-value-bind (output error-output exit-code)
           (uiop:run-program 
-           (list "curl" "-s" "-X" "POST" "-F" (format nil "file=@~a" filepath) *crafterbin-url*)
+           (list "curl" "-s" "-X" "POST" "-F" (format nil "file=@~a" filepath) clatter.core.constants:+crafterbin-url+)
            :output :string
            :error-output :string
            :ignore-error-status t)
@@ -378,7 +377,6 @@
    /dcc accept [id] - accept pending DCC offer
    /dcc reject [id] - reject pending DCC offer
    /dcc close [id] - close DCC connection"
-  (declare (ignore conn))
   (let ((manager clatter.net.dcc:*dcc-manager*))
     (unless manager
       (de.anvi.croatoan:submit
@@ -401,7 +399,7 @@
           ((string= subcmd-up "SEND")
            (multiple-value-bind (nick filepath) (split-first-word rest)
              (if (and (> (length nick) 0) (> (length filepath) 0))
-                 (clatter.net.dcc:dcc-initiate-send manager nick filepath)
+                 (clatter.net.dcc:dcc-initiate-send manager nick filepath conn)
                  (dcc-show-usage app "Usage: /dcc send <nick> <filepath>"))))
           
           ;; /dcc list
@@ -420,9 +418,17 @@
           ((string= subcmd-up "CLOSE")
            (dcc-close-command app manager rest))
           
+          ;; /dcc ip [address] - show or set DCC IP
+          ((string= subcmd-up "IP")
+           (if (> (length rest) 0)
+               (progn
+                 (clatter.net.dcc:set-dcc-ip (string-trim " " rest))
+                 (dcc-show-usage app (format nil "DCC IP set to: ~a" (string-trim " " rest))))
+               (dcc-show-usage app (format nil "Current DCC IP: ~a" (clatter.net.dcc:get-local-ip)))))
+          
           ;; Unknown or no subcommand - show help
           (t
-           (dcc-show-usage app "Usage: /dcc [chat|send|list|accept|reject|close] ...")))))))
+           (dcc-show-usage app "Usage: /dcc [chat|send|list|accept|reject|close|ip] ...")))))))
 
 (defun dcc-show-usage (app text)
   "Show DCC usage message."

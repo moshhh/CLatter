@@ -7,6 +7,8 @@
   :serial t
   :components
   ((:file "src/package")
+   (:file "src/core/constants")
+   (:file "src/core/debug")
    (:file "src/core/ring")
    (:file "src/core/model")
    (:file "src/core/config")

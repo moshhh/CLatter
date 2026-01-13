@@ -73,13 +73,18 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command join-command) app conn args)
-  (when (> (length args) 0)
-    (multiple-value-bind (channel key) (split-first-word args)
-      (clatter.net.irc:irc-send conn
-        (if (> (length key) 0)
-            (clatter.core.protocol:irc-join channel key)
-            (clatter.core.protocol:irc-join channel)))
-      (add-to-autojoin app channel)))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /join #channel [key]")
+      (multiple-value-bind (channel key) (split-first-word args)
+        (if (not (clatter.core.protocol:channel-name-p channel))
+            (cmd-error app (format nil "Invalid channel name: ~a (must start with # & + or !)" channel))
+            (progn
+              (clatter.net.irc:irc-send conn
+                (if (> (length key) 0)
+                    (clatter.core.protocol:irc-join channel key)
+                    (clatter.core.protocol:irc-join channel)))
+              (add-to-autojoin app channel)
+              (cmd-message app (format nil "Joining ~a..." channel))))))
   t)
 
 ;;; /part [#channel] [message]
@@ -119,17 +124,20 @@
    :min-args 2))
 
 (defmethod execute-cmd ((command msg-command) app conn args)
-  (when (> (length args) 0)
-    (multiple-value-bind (target text) (split-first-word args)
-      (when (> (length text) 0)
-        (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg target text))
-        (let ((buf (clatter.net.irc::irc-find-or-create-buffer conn target)))
-          (de.anvi.croatoan:submit
-            (clatter.core.dispatch:deliver-message
-             app buf
-             (clatter.core.model:make-message :level :chat
-                                              :nick (clatter.net.irc:irc-nick conn)
-                                              :text text)))))))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /msg <target> <message>")
+      (multiple-value-bind (target text) (split-first-word args)
+        (if (or (null text) (zerop (length text)))
+            (cmd-error app "Usage: /msg <target> <message> - message text required")
+            (progn
+              (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg target text))
+              (let ((buf (clatter.net.irc::irc-find-or-create-buffer conn target)))
+                (de.anvi.croatoan:submit
+                  (clatter.core.dispatch:deliver-message
+                   app buf
+                   (clatter.core.model:make-message :level :chat
+                                                    :nick (clatter.net.irc:irc-nick conn)
+                                                    :text text))))))))
   t)
 
 ;;; /me action
@@ -143,15 +151,20 @@
 (defmethod execute-cmd ((command me-command) app conn args)
   (let* ((buf (clatter.core.model:active-buffer app))
          (target (if buf (clatter.core.model:buffer-title buf) "")))
-    (when (and buf (> (length args) 0) (> (length target) 0))
-      (let ((action-text (format nil "~CACTION ~a~C" (code-char 1) args (code-char 1))))
-        (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg target action-text))
-        (de.anvi.croatoan:submit
-          (clatter.core.dispatch:deliver-message
-           app buf
-           (clatter.core.model:make-message :level :chat
-                                            :nick (format nil "* ~a" (clatter.net.irc:irc-nick conn))
-                                            :text args))))))
+    (cond
+      ((or (null args) (zerop (length args)))
+       (cmd-error app "Usage: /me <action>"))
+      ((or (null buf) (zerop (length target)))
+       (cmd-error app "Cannot send action: not in a channel or query"))
+      (t
+       (let ((action-text (format nil "~CACTION ~a~C" (code-char 1) args (code-char 1))))
+         (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg target action-text))
+         (de.anvi.croatoan:submit
+           (clatter.core.dispatch:deliver-message
+            app buf
+            (clatter.core.model:make-message :level :chat
+                                             :nick (format nil "* ~a" (clatter.net.irc:irc-nick conn))
+                                             :text args)))))))
   t)
 
 ;;; /nick newnick
@@ -163,11 +176,12 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command nick-command) app conn args)
-  (declare (ignore app))
-  (when (> (length args) 0)
-    (multiple-value-bind (newnick rest) (split-first-word args)
-      (declare (ignore rest))
-      (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-nick newnick))))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /nick <newnick>")
+      (multiple-value-bind (newnick rest) (split-first-word args)
+        (declare (ignore rest))
+        (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-nick newnick))
+        (cmd-message app (format nil "Changing nick to ~a..." newnick))))
   t)
 
 ;;; /quit [message]
@@ -195,9 +209,9 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command ns-command) app conn args)
-  (declare (ignore app))
-  (when (> (length args) 0)
-    (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg "NickServ" args)))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /ns <command> - Send command to NickServ")
+      (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg "NickServ" args)))
   t)
 
 ;;; /cs command - ChanServ shortcut
@@ -209,9 +223,9 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command cs-command) app conn args)
-  (declare (ignore app))
-  (when (> (length args) 0)
-    (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg "ChanServ" args)))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /cs <command> - Send command to ChanServ")
+      (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-privmsg "ChanServ" args)))
   t)
 
 ;;; /query nick - open query buffer
@@ -223,16 +237,18 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command query-command) app conn args)
-  (when (> (length args) 0)
-    (multiple-value-bind (nick rest) (split-first-word args)
-      (declare (ignore rest))
-      (let ((buf (clatter.net.irc::irc-find-or-create-buffer conn nick)))
-        (when buf
-          ;; Switch to the new buffer and refresh UI
-          (de.anvi.croatoan:submit
-            (setf (clatter.core.model:app-current-buffer-id app)
-                  (clatter.core.model:buffer-id buf))
-            (clatter.core.model:mark-dirty app :buflist :chat :status))))))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /query <nick> - Open private message buffer")
+      (multiple-value-bind (nick rest) (split-first-word args)
+        (declare (ignore rest))
+        (let ((buf (clatter.net.irc::irc-find-or-create-buffer conn nick)))
+          (if buf
+              (de.anvi.croatoan:submit
+                (setf (clatter.core.model:app-current-buffer-id app)
+                      (clatter.core.model:buffer-id buf))
+                (clatter.core.model:mark-dirty app :buflist :chat :status)
+                (cmd-message app (format nil "Opened query with ~a" nick)))
+              (cmd-error app (format nil "Failed to create query buffer for ~a" nick))))))
   t)
 
 ;;; /raw command - send raw IRC line
@@ -244,9 +260,11 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command raw-command) app conn args)
-  (declare (ignore app))
-  (when (> (length args) 0)
-    (clatter.net.irc:irc-send conn args))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /raw <IRC command> - Send raw IRC protocol line")
+      (progn
+        (clatter.net.irc:irc-send conn args)
+        (cmd-message app (format nil "Sent: ~a" args))))
   t)
 
 ;;; /whois nick
@@ -258,11 +276,12 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command whois-command) app conn args)
-  (declare (ignore app))
-  (when (> (length args) 0)
-    (multiple-value-bind (nick rest) (split-first-word args)
-      (declare (ignore rest))
-      (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-whois nick))))
+  (if (or (null args) (zerop (length args)))
+      (cmd-error app "Usage: /whois <nick> - Query user information")
+      (multiple-value-bind (nick rest) (split-first-word args)
+        (declare (ignore rest))
+        (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-whois nick))
+        (cmd-message app (format nil "Querying ~a..." nick))))
   t)
 
 ;;; /topic [new topic]
@@ -275,10 +294,16 @@
 (defmethod execute-cmd ((command topic-command) app conn args)
   (let* ((buf (clatter.core.model:active-buffer app))
          (target (if buf (clatter.core.model:buffer-title buf) "")))
-    (when (> (length target) 0)
-      (if (> (length args) 0)
-          (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target args))
-          (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target)))))
+    (cond
+      ((or (null buf) (zerop (length target)))
+       (cmd-error app "Cannot get/set topic: not in a channel"))
+      ((not (eq (clatter.core.model:buffer-kind buf) :channel))
+       (cmd-error app "Cannot get/set topic: not a channel buffer"))
+      ((> (length args) 0)
+       (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target args))
+       (cmd-message app "Setting topic..."))
+      (t
+       (clatter.net.irc:irc-send conn (clatter.core.protocol:irc-topic target)))))
   t)
 
 ;;; /kick nick [reason]
@@ -290,15 +315,22 @@
    :min-args 1))
 
 (defmethod execute-cmd ((command kick-command) app conn args)
-  (when (> (length args) 0)
-    (let* ((buf (clatter.core.model:active-buffer app))
-           (channel (if buf (clatter.core.model:buffer-title buf) "")))
-      (when (and (> (length channel) 0) (char= (char channel 0) #\#))
-        (multiple-value-bind (nick reason) (split-first-word args)
-          (clatter.net.irc:irc-send conn
-            (if (> (length reason) 0)
-                (clatter.core.protocol:irc-kick channel nick reason)
-                (clatter.core.protocol:irc-kick channel nick)))))))
+  (let* ((buf (clatter.core.model:active-buffer app))
+         (channel (if buf (clatter.core.model:buffer-title buf) "")))
+    (cond
+      ((or (null args) (zerop (length args)))
+       (cmd-error app "Usage: /kick <nick> [reason]"))
+      ((or (null buf) (zerop (length channel)))
+       (cmd-error app "Cannot kick: not in a channel"))
+      ((not (clatter.core.protocol:channel-name-p channel))
+       (cmd-error app "Cannot kick: not a channel buffer"))
+      (t
+       (multiple-value-bind (nick reason) (split-first-word args)
+         (clatter.net.irc:irc-send conn
+           (if (> (length reason) 0)
+               (clatter.core.protocol:irc-kick channel nick reason)
+               (clatter.core.protocol:irc-kick channel nick)))
+         (cmd-message app (format nil "Kicking ~a from ~a..." nick channel))))))
   t)
 
 ;;; /away [message]
@@ -701,6 +733,220 @@
   t)
 
 ;;;; ============================================================
+;;;; URL Command
+;;;; ============================================================
+
+(defclass url-command (irc-command)
+  ()
+  (:default-initargs
+   :name "URL"
+   :help "/url [N|list] - Open Nth recent URL (default 1) or list recent URLs"
+   :min-args 0))
+
+(defmethod execute-cmd ((command url-command) app conn args)
+  (declare (ignore conn))
+  (let* ((buf (clatter.core.model:current-buffer app))
+         (urls (when buf (clatter.core.model:buffer-recent-urls buf))))
+    (cond
+      ((null urls)
+       (cmd-message app "No URLs found in this buffer"))
+      ;; /url list - show recent URLs
+      ((and args (string-equal (string-trim " " args) "list"))
+       (cmd-message app "Recent URLs:")
+       (loop for url in urls
+             for i from 1 to (min 10 (length urls))
+             do (cmd-message app (format nil "  ~d. ~a" i url))))
+      ;; /url N - open Nth URL
+      ((and args (> (length args) 0))
+       (let ((n (parse-integer args :junk-allowed t)))
+         (if (and n (> n 0) (<= n (length urls)))
+             (let ((url (nth (1- n) urls)))
+               (cmd-message app (format nil "Opening: ~a" url))
+               (clatter.core.model:open-url url))
+             (cmd-error app (format nil "Invalid URL number. Use 1-~d or 'list'" (length urls))))))
+      ;; /url - open most recent
+      (t
+       (let ((url (first urls)))
+         (cmd-message app (format nil "Opening: ~a" url))
+         (clatter.core.model:open-url url)))))
+  t)
+
+;;;; ============================================================
+;;;; Search and Filter Commands
+;;;; ============================================================
+
+(defclass search-command (irc-command)
+  ()
+  (:default-initargs
+   :name "SEARCH"
+   :help "/search <pattern> - Search current buffer for messages matching pattern"
+   :min-args 1))
+
+(defmethod execute-cmd ((command search-command) app conn args)
+  (declare (ignore conn))
+  (let* ((buf (clatter.core.model:current-buffer app))
+         (pattern args)
+         (messages (clatter.core.ring:ring->list (clatter.core.model:buffer-scrollback buf)))
+         (matches nil)
+         (count 0))
+    ;; Search messages
+    (dolist (msg messages)
+      (when (search pattern (clatter.core.model:message-text msg) :test #'char-equal)
+        (push msg matches)
+        (incf count)))
+    ;; Display results
+    (if (zerop count)
+        (cmd-message app (format nil "No matches found for '~a'" pattern))
+        (progn
+          (cmd-message app (format nil "Found ~d matches for '~a':" count pattern))
+          ;; Show up to 10 most recent matches
+          (loop for msg in (subseq (reverse matches) 0 (min 10 count))
+                do (cmd-message app 
+                     (format nil "  [~a] <~a> ~a"
+                             (format-timestamp (clatter.core.model:message-ts msg))
+                             (or (clatter.core.model:message-nick msg) "*")
+                             (clatter.core.model:message-text msg))
+                     :level :search))
+          (when (> count 10)
+            (cmd-message app (format nil "  ... and ~d more matches" (- count 10)))))))
+  t)
+
+(defclass filter-command (irc-command)
+  ()
+  (:default-initargs
+   :name "FILTER"
+   :help "/filter <pattern> - Show only messages matching pattern (use /unfilter to clear)"
+   :min-args 1))
+
+(defmethod execute-cmd ((command filter-command) app conn args)
+  (declare (ignore conn))
+  (let ((buf (clatter.core.model:current-buffer app)))
+    (setf (clatter.core.model:buffer-filter-pattern buf) args
+          (clatter.core.model:buffer-filter-active buf) t)
+    (cmd-message app (format nil "Filter active: ~a (use /unfilter to clear)" args))
+    (clatter.core.model:mark-dirty app :chat))
+  t)
+
+(defclass unfilter-command (irc-command)
+  ()
+  (:default-initargs
+   :name "UNFILTER"
+   :aliases '("CLEARFILTER")
+   :help "/unfilter - Clear message filter"
+   :min-args 0))
+
+(defmethod execute-cmd ((command unfilter-command) app conn args)
+  (declare (ignore conn args))
+  (let ((buf (clatter.core.model:current-buffer app)))
+    (if (clatter.core.model:buffer-filter-active buf)
+        (progn
+          (setf (clatter.core.model:buffer-filter-active buf) nil
+                (clatter.core.model:buffer-filter-pattern buf) nil)
+          (cmd-message app "Filter cleared")
+          (clatter.core.model:mark-dirty app :chat))
+        (cmd-message app "No filter active")))
+  t)
+
+;;;; ============================================================
+;;;; Debug Command
+;;;; ============================================================
+
+(defclass debug-command (irc-command)
+  ()
+  (:default-initargs
+   :name "DEBUG"
+   :help "/debug [level|status|file|cat] - Control debug logging"
+   :min-args 0))
+
+(defmethod execute-cmd ((command debug-command) app conn args)
+  (declare (ignore conn))
+  (let* ((parts (when args (cl-ppcre:split "\\s+" (string-trim " " args))))
+         (subcmd (string-upcase (or (first parts) "STATUS")))
+         (arg (second parts)))
+    (cond
+      ;; /debug status - show current status
+      ((string= subcmd "STATUS")
+       (cmd-message app (clatter.core.debug:debug-status)))
+      ;; /debug 0-5 or off/error/warn/info/debug/trace - set level
+      ((or (every #'digit-char-p subcmd)
+           (member subcmd '("OFF" "ERROR" "WARN" "INFO" "DEBUG" "TRACE") :test #'string=))
+       (clatter.core.debug:set-debug-level 
+        (cond
+          ((string= subcmd "OFF") 0)
+          ((string= subcmd "ERROR") 1)
+          ((string= subcmd "WARN") 2)
+          ((string= subcmd "INFO") 3)
+          ((string= subcmd "DEBUG") 4)
+          ((string= subcmd "TRACE") 5)
+          (t (parse-integer subcmd))))
+       (cmd-message app (format nil "Debug level set to ~d (~a)" 
+                                clatter.core.debug:*debug-level*
+                                (clatter.core.debug:level-name clatter.core.debug:*debug-level*))))
+      ;; /debug file <path> - log to file
+      ((string= subcmd "FILE")
+       (if arg
+           (progn
+             (clatter.core.debug:open-debug-file arg)
+             (cmd-message app (format nil "Debug logging to: ~a" arg)))
+           (progn
+             (clatter.core.debug:close-debug-file)
+             (cmd-message app "Debug file logging disabled"))))
+      ;; /debug cat <category> - toggle category
+      ((string= subcmd "CAT")
+       (if arg
+           (if (clatter.core.debug:debug-category-enabled-p arg)
+               (progn
+                 (clatter.core.debug:disable-debug-category arg)
+                 (cmd-message app (format nil "Category '~a' disabled" arg)))
+               (progn
+                 (clatter.core.debug:enable-debug-category arg)
+                 (cmd-message app (format nil "Category '~a' enabled" arg))))
+           (let ((cats (clatter.core.debug:list-debug-categories)))
+             (if cats
+                 (cmd-message app (format nil "Enabled categories: ~{~a~^, ~}" cats))
+                 (cmd-message app "All categories enabled (no filter)")))))
+      ;; /debug clear - clear category filters
+      ((string= subcmd "CLEAR")
+       (clatter.core.debug:clear-debug-categories)
+       (cmd-message app "Category filters cleared"))
+      (t
+       (cmd-message app "Usage: /debug [0-5|off|error|warn|info|debug|trace]")
+       (cmd-message app "       /debug status - show current settings")
+       (cmd-message app "       /debug file <path> - log to file")
+       (cmd-message app "       /debug cat [category] - toggle/list categories"))))
+  t)
+
+;;;; ============================================================
+;;;; Theme Command
+;;;; ============================================================
+
+(defclass theme-command (irc-command)
+  ()
+  (:default-initargs
+   :name "THEME"
+   :help "/theme [name] - List themes or switch to named theme (dark, light, solarized, minimal, ascii, rounded)"
+   :min-args 0))
+
+(defmethod execute-cmd ((command theme-command) app conn args)
+  (declare (ignore conn))
+  (if (or (null args) (zerop (length args)))
+      ;; List available themes
+      (let ((themes (clatter.ui.render:list-themes)))
+        (cmd-message app (format nil "Available themes: ~{~a~^, ~}" 
+                                (mapcar #'string-downcase themes)))
+        (cmd-message app (format nil "Current theme: ~a" 
+                                (type-of (clatter.ui.render:current-theme)))))
+      ;; Switch theme
+      (let ((theme-class (clatter.ui.render:find-theme args)))
+        (if theme-class
+            (progn
+              (clatter.ui.render:set-theme theme-class)
+              (clatter.core.model:mark-dirty app :layout :chat :buflist :status :input)
+              (cmd-message app (format nil "Theme switched to: ~a" args)))
+            (cmd-error app (format nil "Unknown theme: ~a. Use /theme to list available themes." args)))))
+  t)
+
+;;;; ============================================================
 ;;;; Command Registration
 ;;;; ============================================================
 
@@ -740,7 +986,13 @@
   (register-command 'members-command)
   (register-command 'list-command)
   (register-command 'who-command)
-  (register-command 'monitor-command))
+  (register-command 'monitor-command)
+  (register-command 'theme-command)
+  (register-command 'debug-command)
+  (register-command 'search-command)
+  (register-command 'filter-command)
+  (register-command 'unfilter-command)
+  (register-command 'url-command))
 
 ;; Register commands when file loads
 (register-all-commands)

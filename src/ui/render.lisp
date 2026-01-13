@@ -2,7 +2,7 @@
 
 ;; Health check timing
 (defvar *last-health-check* 0 "Universal time of last connection health check")
-(defparameter *health-check-interval* 30 "Seconds between health checks")
+;; Health check interval uses clatter.core.constants:+health-check-interval+
 
 ;; Nick color - now uses theme system
 (defun nick-color (nick)
@@ -96,7 +96,15 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
 
 (defun render-chat-pane (win buf)
   "Render a buffer's messages into a chat window pane."
-  (let* ((msgs (ring->list (buffer-scrollback buf)))
+  (let* ((all-msgs (ring->list (buffer-scrollback buf)))
+         ;; Apply filter if active
+         (msgs (if (clatter.core.model:buffer-filter-active buf)
+                   (let ((pattern (clatter.core.model:buffer-filter-pattern buf)))
+                     (remove-if-not 
+                      (lambda (m)
+                        (search pattern (clatter.core.model:message-text m) :test #'char-equal))
+                      all-msgs))
+                   all-msgs))
          (h (de.anvi.croatoan:height win))
          (w (de.anvi.croatoan:width win))
          (content-h (- h 2))
@@ -173,7 +181,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
 (defun maybe-check-connection-health (app)
   "Periodically check all connection health (called from render loop)."
   (let ((now (get-universal-time)))
-    (when (> (- now *last-health-check*) *health-check-interval*)
+    (when (> (- now *last-health-check*) clatter.core.constants:+health-check-interval+)
       (setf *last-health-check* now)
       ;; Check health of all connections
       (maphash (lambda (name conn)
@@ -258,7 +266,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
         ;; In split mode, show buffer name in border with active indicator
         (when (ui-split-mode ui)
           (let ((left-title (format nil " ~a~a "
-                                    (if (eq active-pane :left) ">> " "")
+                                    (if (member active-pane '(:left :top)) ">> " "")
                                     (buffer-title left-buf))))
             (%clear-and-border wchat left-title))
           (render-chat-pane wchat left-buf))
@@ -274,7 +282,7 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
             (let ((right-buf (aref (app-buffers app) split-buf-id)))
               (when right-buf  ;; Guard against nil buffer
                 (let ((right-title (format nil " ~a~a "
-                                           (if (eq active-pane :right) ">> " "")
+                                           (if (member active-pane '(:right :bottom)) ">> " "")
                                            (buffer-title right-buf))))
                   (%clear-and-border wchat2 right-title)
                   (render-chat-pane wchat2 right-buf))))))))
@@ -317,6 +325,27 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
            (buf (if (and split-p (eq active-pane :right) right-buf)
                     right-buf
                     left-buf))
+           ;; Get connection for this buffer
+           (conn (when buf (clatter.core.model:get-buffer-connection app buf)))
+           (conn-state (when conn (clatter.net.irc:irc-state conn)))
+           ;; Connection state indicator
+           (conn-indicator (case conn-state
+                            (:connected "●")
+                            (:connecting "⟳")
+                            (:registering "⋯")
+                            (:disconnected "○")
+                            (t "?")))
+           ;; TLS indicator
+           (tls-indicator (when (and conn (clatter.net.irc:irc-network-config conn))
+                           (if (clatter.core.config:network-config-tls 
+                                (clatter.net.irc:irc-network-config conn))
+                               "🔒" nil)))
+           ;; Filter indicator
+           (filter-indicator (when (and buf (buffer-filter-active buf))
+                              (format nil "🔍~a" (buffer-filter-pattern buf))))
+           ;; Scroll indicator
+           (scroll-indicator (when (and buf (> (clatter.core.model:buffer-scroll-offset buf) 0))
+                              (format nil "↑~d" (clatter.core.model:buffer-scroll-offset buf))))
            (unread (if buf (buffer-unread-count buf) 0))
            (highlights (if buf (buffer-highlight-count buf) 0))
            (typing-nicks (when buf (clatter.core.model:get-typing-nicks buf)))
@@ -337,12 +366,16 @@ Supported tokens: %H (24h hour), %I (12h hour), %M (minute), %S (second), %p (AM
            ;; Build mode indicator for status bar
            (mode-str (when (and my-modes (> (length my-modes) 0))
                        (format nil "(~a)" my-modes)))
-           (shortcuts " | ^P/N buf | ^U/D scroll | ^W split | ^L redraw")
-           (line (format nil " [~a]~@[ ~a~]~@[  unread:~d~]~@[  mentions:~d~]~@[  ~a~]~a"
+           (shortcuts " | ^P/N buf | ^U/D scroll | ^W split")
+           (line (format nil " ~a~@[~a~] [~a]~@[ ~a~]~@[  ~d unread~]~@[  ~d mentions~]~@[  ~a~]~@[  ~a~]~@[  ~a~]~a"
+                         conn-indicator
+                         tls-indicator
                          (if network-name (format nil "~a/~a" network-name title-str) title-str)
                          mode-str
                          (and (> unread 0) unread)
                          (and (> highlights 0) highlights)
+                         scroll-indicator
+                         filter-indicator
                          typing-str
                          shortcuts)))
       (%draw-line wstatus 0 0 (subseq line 0 (min (length line) (de.anvi.croatoan:width wstatus)))))
