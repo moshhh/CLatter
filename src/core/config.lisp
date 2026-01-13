@@ -240,7 +240,7 @@ Returns plist with :login and :password, or nil if not found."
                          (string-equal (getf entry :login) login)))
             (return entry)))))))
 
-(defun read-systemd-cred (path)
+(defun read-systemd-creds (path)
   "Decrypt a systemd-creds encrypted file and return its contents."
   (handler-case
       (string-trim '(#\Space #\Newline #\Return)
@@ -249,6 +249,17 @@ Returns plist with :login and :password, or nil if not found."
                                        :output out
                                        :error-output nil)))
     (error () nil)))
+
+(defun read-systemd-creds-user (path)
+  "Decrypt a systemd-creds encrypted file with the --user switch  and return its contents."
+  (handler-case
+     (string-trim '(#\Space #\Newline #\Return)
+                  (with-output-to-string (out)
+                    (uiop:run-program (list "systemd-creds" "--user" "decrypt" path "-")
+			              :output out
+                                      :error-output nil)))
+   (error () nil)))
+
 (defun read-password-store (password-name)
   "Resolve a password value from pass(1)"
   (handler-case
@@ -263,6 +274,7 @@ Returns plist with :login and :password, or nil if not found."
   "Resolve a password value that may be:
    - :authinfo - read from ~/.authinfo or ~/.authinfo.gpg (requires server/nick)
    - (:systemd-creds \"/path/to/file.cred\") - decrypt using a system credential with systemd-creds
+   - (:systemd-creds-user \"/path/to/file.cred\") - decrypt using a user credential with systemd-creds
    - (:pass password-name) - decrypt using pass(1)
    - plain string - use directly
    - nil - no password"
@@ -273,11 +285,16 @@ Returns plist with :login and :password, or nil if not found."
        (let ((entry (lookup-authinfo server nick)))
          (getf entry :password))))
 
-    ;; (:systemd-cred "/path/to/file.cred") - decrypt using systemd-creds
+    ;; (:systemd-creds "/path/to/file.cred") - decrypt using systemd-creds
     ((and (listp pw) (eq (first pw) :systemd-creds))
      (let ((cred-path (second pw)))
        (when cred-path
-         (read-systemd-cred cred-path))))
+         (read-systemd-creds cred-path))))
+
+    ((and (listp pw) (eq (first pw) :systemd-creds-user))
+     (let ((cred-path (second pw)))
+       (when cred-path
+          (read-systemd-creds-user cred-path))))
 
     ;; (:pass "password-name") - decrypt using pass(1)
     ((and (listp pw) (eq (first pw) :pass))
