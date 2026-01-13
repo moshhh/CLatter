@@ -186,7 +186,7 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 
 **** systemd-creds (encrypted with TPM/host key)
 
-Use =systemd-creds= to encrypt your password. This ties the credential to your machine and doesn't require GPG.
+Use =systemd-creds= to create a system credential to encrypt your password. This ties the credential to your machine and doesn't require GPG. This requires root privlages.
 
 1. Create the encrypted credential:
    #+begin_src bash
@@ -203,7 +203,8 @@ Use =systemd-creds= to encrypt your password. This ties the credential to your m
 
 CLatter will decrypt the credential file at startup using =systemd-creds decrypt=.
 
-**** pass(1) (GPG encrypted) - recommended for Mac OS.
+
+**** pass(1) (GPG encrypted)
 Use =pass(1)= the standard unix password manager, to store and encrypt your password. This works using GPG and the credential is portable. 
 
 1. Install pass using your package manager of choice (see [[https://www.passwordstore.org/][website]] for supported platforms). 
