@@ -186,7 +186,7 @@ CLatter will decrypt the file using GPG and look up the password by matching the
 
 **** systemd-creds (encrypted with TPM and/or host key)
 
-Use =systemd-creds= to create a system credential to encrypt your password. This ties the credential to your machine and doesn't require GPG. This *requires* root privlages.
+Use =systemd-creds= to create a SYSTEM credential to encrypt your password. This ties the credential to your machine and doesn't require GPG. This *requires* root privilages.
 
 1. Create the encrypted credential:
    #+begin_src bash
@@ -205,7 +205,7 @@ CLatter will decrypt the credential file at startup using =systemd-creds decrypt
 
 **** systemd-creds --user (encrypted with TPM and/or host key)
 
-Use =systemd-creds= with the =--user switch= to create a user credential to encrypt your password. This ties the credential to your machine and doesn't require GPG. This *does not* require root privlages.
+Use =systemd-creds= with the =--user switch= to create a USER credential to encrypt your password. This ties the credential to your machine and doesn't require GPG. This *does not* require root privilages.
 
 1. Create the encrypted credential:
    #+begin_src bash
