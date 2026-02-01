@@ -2,6 +2,12 @@
 #+AUTHOR: Glenn Thompson
 #+OPTIONS: toc:2
 
+*⚠️ THIS REPOSITORY HAS MOVED TO [[https://github.com/parenworks/CLatter][parenworks/CLatter]]*
+
+Please visit the new location for the latest code and updates.
+
+-----
+
 * CLatter
 
 A terminal-based IRC client written in Common Lisp using the [[https://codeberg.org/McParen/croatoan][croatoan]] ncurses library.
